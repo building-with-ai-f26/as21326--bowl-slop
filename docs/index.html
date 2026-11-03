@@ -160,9 +160,9 @@
         <strong>Current Status:</strong> Build 1: rough local prototype (one HTML file, runs in any browser)<br />
         <strong>Demo:</strong> <a href="game.html">Play the prototype →</a> (arrows/WASD to move, Space to jump)
       </p>
-      <img src="img/gameplay.png" alt="Gameplay: Super Marinara mid-jump on floor 8 with a 7-floor combo" style="max-width: 320px; width: 100%; border-radius: 8px; border: 1px solid var(--border);" />
+      <img src="img/gameplay.png" alt="Gameplay: Lunk mid-jump on floor 11 with a 7-floor combo" style="max-width: 320px; width: 100%; border-radius: 8px; border: 1px solid var(--border);" />
       <p class="meta">
-        Prototype screenshot: Super Marinara (colander hat, spaghetti hair) mid-jump on floor 8 during a combo.
+        Prototype screenshot: Lunk (green cap, baguette for a sword) mid-jump on floor 11 during a 7-floor combo.
         All characters are original parody designs (Super Marinara, Soggy the Hedgehog, Tax-Man, Lunk) and are not affiliated with any real game or company.
       </p>
     </section>
@@ -218,10 +218,10 @@
       <div class="log-entry">
         <h3>Build 1 · Intent.md & Throwaway Prototype (Due Nov 9)</h3>
         <ul>
-          <li><strong>What shipped (Nov 3):</strong> A playable prototype in a single file (<a href="game.html">game.html</a>, plain HTML + JavaScript canvas, no libraries, no API keys). <em>Works:</em> four parody characters with hand-coded pixel art and slightly different stats; icy floors that keep you sliding when you let go; jumps that get higher the faster you run (≈1.2 floors standing vs ≈3.9 floors at full speed, measured); wall bounces; a tower that starts scrolling after 5 seconds and speeds up; combos for multi-floor jumps; a saved high score.</li>
-          <li><strong>Things learned with AI:</strong> A game is a loop: read input → update physics → draw, about 60 times a second. Physics should run on a fixed clock ("fixed timestep") so the game plays the same on a 60Hz and a 120Hz screen. Parody only works when the joke is visible: the first Super Marinara looked like a straight copy, so we gave him a colander hat.</li>
-          <li><strong>What broke / changed:</strong> The local web server couldn't read files in iCloud Drive (macOS privacy block), so the prototype now runs by opening the file directly in a browser. Our automated test bot "lost" constantly at first. That was the bot letting go of jump too early, not a game bug, but it showed that the first 3 seconds were too harsh, so the scroll now waits 5 seconds. Soggy (the slipperiest character) is hard to control; that may be a feature or a bug, and playtesting will tell.</li>
-          <li><strong>Cost & time this week:</strong> $0 runtime (no APIs) · coding agent: Claude Code on my existing subscription · [X] hours</li>
+          <li><strong>What shipped (Nov 3):</strong> A playable prototype in a single file (<a href="game.html">game.html</a>, plain HTML + JavaScript canvas, no libraries, no API keys). <em>Works:</em> four parody characters drawn as vector art (outlines, shading, run animations) with slightly different stats; icy floors that keep you sliding when you let go; jumps that get higher the faster you run (≈1.2 floors standing vs ≈3.9 floors at full speed, measured); wall bounces that speed you up, plus a timed "wall kick" (jump within 0.2s of a bounce) that reaches ≈5.3 floors; a tower that starts scrolling after 5 seconds and speeds up; combos for multi-floor jumps; a saved high score.</li>
+          <li><strong>Things learned with AI:</strong> A game is a loop: read input → update physics → draw, about 60 times a second. Physics should run on a fixed clock ("fixed timestep") so the game plays the same on a 60Hz and a 120Hz screen. Parody only works when the joke is visible: the first Super Marinara looked like a straight copy, so we gave him a colander hat. Researching how classic tower climbers feel showed that a wall bounce should <em>add</em> speed, not lose it. My first version lost 10% of your speed on every bounce, so I changed it.</li>
+          <li><strong>What broke / changed:</strong> The local web server couldn't read files in iCloud Drive (macOS privacy block), so the prototype now runs by opening the file directly in a browser. Our automated test bot "lost" constantly at first. That was the bot letting go of jump too early, not a game bug, but it showed that the first 3 seconds were too harsh, so the scroll now waits 5 seconds. Soggy (the slipperiest character) is hard to control; that may be a feature or a bug, and playtesting will tell. The first characters were 12×16 pixel art and looked too basic, so I redrew them as smooth vector shapes. I couldn't make the class org the repo owner, so the repo lives on my personal account for now (letting the instructors know).</li>
+          <li><strong>Cost & time this week:</strong> $0 runtime (no APIs) · coding agent: Claude Code on my existing subscription · 3 hours</li>
         </ul>
       </div>
 
