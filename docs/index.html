@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>[Your Product Name] · Building with AI (Fall 2026)</title>
+  <title>Slip Up! · Building with AI (Fall 2026)</title>
 
   <!-- Week 1: create your PostHog account only.
        Build 2: paste your project's current PostHog web snippet here,
@@ -144,8 +144,8 @@
     <!-- HERO / PRODUCT PITCH -->
     <header>
       <span class="eyebrow">NYU Stern · Building with AI · Fall 2026</span>
-      <h1>[Your Product Name]</h1>
-      <p class="tagline">[One clear sentence: Who is this for, and what painful job does it do for them?]</p>
+      <h1>Slip Up!</h1>
+      <p class="tagline">A 60-second icy tower-climbing game for students killing time between classes: no install, no ads, no account. Just open the link and climb.</p>
       <div class="cta-row">
         <a class="btn" href="#live-demo" onclick="window.posthog && posthog.capture('clicked_try_product')">See the Product →</a>
         <a class="btn btn-secondary" href="#prd">Read the Living PRD</a>
@@ -157,11 +157,13 @@
     <section id="live-demo">
       <h2>Product Showcase (Prototype / Live App / 2-Min Video)</h2>
       <p>
-        <strong>Current Status:</strong> [Build 1: local prototype / Builds 2–4: local app / Build 5: cloud app]<br />
-        <strong>Demo:</strong> [Add a screenshot or GIF now; add the live cloud app URL in Build 5.]
+        <strong>Current Status:</strong> Build 1: rough local prototype (one HTML file, runs in any browser)<br />
+        <strong>Demo:</strong> <a href="game.html">Play the prototype →</a> (arrows/WASD to move, Space to jump)
       </p>
+      <img src="img/gameplay.png" alt="Gameplay: Super Marinara mid-jump on floor 8 with a 7-floor combo" style="max-width: 320px; width: 100%; border-radius: 8px; border: 1px solid var(--border);" />
       <p class="meta">
-        Ask your coding agent to embed a screenshot or GIF of your local prototype for Build 1. Keep this evidence current, then add your cloud app link and two-minute video in Build 5.
+        Prototype screenshot: Super Marinara (colander hat, spaghetti hair) mid-jump on floor 8 during a combo.
+        All characters are original parody designs (Super Marinara, Soggy the Hedgehog, Tax-Man, Lunk) and are not affiliated with any real game or company.
       </p>
     </section>
 
@@ -171,16 +173,16 @@
       <p class="meta">Updated every week as we test with real users and learn what works.</p>
 
       <h3>1. Target User & The Job to Be Done</h3>
-      <p><strong>Who is this for?</strong> [Name a specific, reachable person or role you have direct access to.]</p>
-      <p><strong>The painful "Before" workflow:</strong> [How do they do this today, and why is it slow, manual, or broken?]</p>
-      <p><strong>The "After" workflow with this product:</strong> [What does your tool do for them in one sitting?]</p>
+      <p><strong>Who is this for?</strong> My Building with AI podmates and roommates: NYU students with a laptop open and 5–10 dead minutes between classes or while waiting for a build to finish. I see them every week, so I can watch them play and ask what they think.</p>
+      <p><strong>The painful "Before" workflow:</strong> They reach for a phone game and hit an app-store install, a login, a tutorial, then ads or energy timers before a single minute of fun. Or they doom-scroll, which isn't actually fun. Browser games mostly have the same ads and pop-ups.</p>
+      <p><strong>The "After" workflow with this product:</strong> Click one link, pick a parody character, and play. A run takes 30–90 seconds, your best score is saved, and one key restarts. Nothing to install, nothing to sign up for.</p>
 
       <h3>2. Scope & Explicit Non-Goals</h3>
       <ul>
-        <li><strong>In Scope (Core Workflow):</strong> [The 1 main workflow this product does reliably]</li>
-        <li><strong>Out of Scope #1:</strong> [Feature you are deliberately NOT building in 6 weeks]</li>
-        <li><strong>Out of Scope #2:</strong> [Feature you are deliberately NOT building in 6 weeks]</li>
-        <li><strong>Out of Scope #3:</strong> [Feature you are deliberately NOT building in 6 weeks]</li>
+        <li><strong>In Scope (Core Workflow):</strong> Open link → pick a character → run on slippery floors and build speed for bigger jumps → climb faster than the tower scrolls → fall → see score and best → restart with one key.</li>
+        <li><strong>Out of Scope #1:</strong> Accounts, online leaderboards, or any backend. Best score lives only in your own browser.</li>
+        <li><strong>Out of Scope #2:</strong> Phone/touch controls. Keyboard on a laptop only.</li>
+        <li><strong>Out of Scope #3:</strong> Story mode, multiple levels, power-ups, shops, or any monetization.</li>
       </ul>
 
       <h3>3. How It Works Under the Hood & Riskiest Assumption (Week 2+)</h3>
@@ -191,11 +193,11 @@
       <div class="grid-2">
         <div class="stat-box">
           <div class="stat-label">Cumulative Build Spend</div>
-          <div class="stat-value">[Record actual spend]</div>
+          <div class="stat-value">$0 extra (subscription)</div>
         </div>
         <div class="stat-box">
           <div class="stat-label">Est. Cost Per User Run</div>
-          <div class="stat-value">[Not yet estimated]</div>
+          <div class="stat-value">$0 (runs in the browser)</div>
         </div>
         <div class="stat-box">
           <div class="stat-label">User Evidence (Analytics from Build 2)</div>
@@ -216,10 +218,10 @@
       <div class="log-entry">
         <h3>Build 1 · Intent.md & Throwaway Prototype (Due Nov 9)</h3>
         <ul>
-          <li><strong>What shipped:</strong> [What you actually built; link your local prototype screenshot or GIF above.]</li>
-          <li><strong>Things learned with AI:</strong> [What you learned from AI practice and Terminus Episodes 1 and 2.]</li>
-          <li><strong>What broke / changed in PRD:</strong> [Fill in]</li>
-          <li><strong>Cost & time this week:</strong> $[0.00] · [0] hours</li>
+          <li><strong>What shipped (Nov 3):</strong> A playable prototype in a single file (<a href="game.html">game.html</a>, plain HTML + JavaScript canvas, no libraries, no API keys). <em>Works:</em> four parody characters with hand-coded pixel art and slightly different stats; icy floors that keep you sliding when you let go; jumps that get higher the faster you run (≈1.2 floors standing vs ≈3.9 floors at full speed, measured); wall bounces; a tower that starts scrolling after 5 seconds and speeds up; combos for multi-floor jumps; a saved high score.</li>
+          <li><strong>Things learned with AI:</strong> A game is a loop: read input → update physics → draw, about 60 times a second. Physics should run on a fixed clock ("fixed timestep") so the game plays the same on a 60Hz and a 120Hz screen. Parody only works when the joke is visible: the first Super Marinara looked like a straight copy, so we gave him a colander hat.</li>
+          <li><strong>What broke / changed:</strong> The local web server couldn't read files in iCloud Drive (macOS privacy block), so the prototype now runs by opening the file directly in a browser. Our automated test bot "lost" constantly at first. That was the bot letting go of jump too early, not a game bug, but it showed that the first 3 seconds were too harsh, so the scroll now waits 5 seconds. Soggy (the slipperiest character) is hard to control; that may be a feature or a bug, and playtesting will tell.</li>
+          <li><strong>Cost & time this week:</strong> $0 runtime (no APIs) · coding agent: Claude Code on my existing subscription · [X] hours</li>
         </ul>
       </div>
 

@@ -1,0 +1,403 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Slip Up! · Tower Climber Prototype</title>
+<style>
+  html, body { margin: 0; height: 100%; background: #0b1020; }
+  body { display: flex; align-items: center; justify-content: center; font-family: -apple-system, "Segoe UI", sans-serif; }
+  canvas { image-rendering: pixelated; max-height: 100vh; max-width: 100vw; border: 2px solid #2b3a67; }
+</style>
+</head>
+<body>
+<canvas id="game" width="480" height="640"></canvas>
+<script>
+// ---------- Setup ----------
+const canvas = document.getElementById('game');
+const ctx = canvas.getContext('2d');
+const W = canvas.width, H = canvas.height;
+const WALL = 32;              // thickness of the side walls
+const FLOOR_GAP = 90;         // vertical distance between floors
+const STEP = 1 / 60;          // physics runs at a fixed 60 ticks/sec
+
+// ---------- Parody characters (pixel art: each letter is a color) ----------
+const CHARACTERS = [
+  {
+    name: 'Super Marinara',
+    bio: "It's-a me, a pasta.",
+    stats: { accel: 0.45, maxSpeed: 9, jump: 11, grip: 0.97 },
+    palette: { R: '#d62828', C: '#cbd5e1', o: '#475569', m: '#7f4f24', Y: '#f4d35e', S: '#f1c27d', K: '#111', H: '#5c3a1a', B: '#1d4ed8', N: '#4a2c12' },
+    art: [
+      '...CCCCC....',
+      '..CoCCoCoC..',
+      'mCCCCCCCCCCm',
+      '..YYSSSKS...',
+      '.YSYSSSKSSS.',
+      '.YSYYSSSHSSS',
+      '..YSSSHHHHH.',
+      '...SSSSSSS..',
+      '..RRBRRRB...',
+      '.RRRBRRRBRRR',
+      'RRRRBBBBBRRR',
+      'SSRBYBBYBRSS',
+      'SSSBBBBBBSSS',
+      '..BBB..BBB..',
+      '.NNN....NNN.',
+      'NNNN....NNNN',
+    ],
+  },
+  {
+    name: 'Soggy the Hedgehog',
+    bio: 'Gotta go... eventually.',
+    stats: { accel: 0.5, maxSpeed: 10.5, jump: 10.5, grip: 0.985 },
+    palette: { U: '#2563eb', D: '#1e3a8a', W: '#fff', K: '#111', S: '#f1c27d', R: '#dc2626', C: '#67e8f9' },
+    art: [
+      '....UUUU....',
+      '..UUUUUUU...',
+      '.UUUUUUUUU..',
+      'UUUUWWKWW...',
+      'DUUUWWKWWS..',
+      'UUUUSSSSSSS.',
+      'DUUUUSSKKS..',
+      '.UUUUSSSS...',
+      '..UUUUUU.C..',
+      '.SUUSSUUS...',
+      '..UUSSSUU...',
+      '...UUUUU..C.',
+      '...UU.UU....',
+      '..WRR.WRR...',
+      '.RRRR.RRRR..',
+      '.C........C.',
+    ],
+  },
+  {
+    name: 'Tax-Man',
+    bio: 'Wakka wakka. You owe 30%.',
+    stats: { accel: 0.38, maxSpeed: 8.5, jump: 12.5, grip: 0.97 },
+    palette: { G: '#16a34a', Y: '#facc15', K: '#111', W: '#f8fafc' },
+    art: [
+      '...GGGGGG...',
+      '..GGGGGGGG..',
+      '.GGGGGGGGGG.',
+      '.YYYYYYYYYY.',
+      'YYYYKYYYYYYY',
+      'YYYYKYYYY...',
+      'YYYYYYYY....',
+      'YYYYYYY..WW.',
+      'YYYYYYYY.WK.',
+      'YYYYYYYYY...',
+      'YYYYYYYYYYYY',
+      '.YYYYYYYYYY.',
+      '..YYYYYYYY..',
+      '...YYYYYY...',
+      '....K..K....',
+      '...KK..KK...',
+    ],
+  },
+  {
+    name: 'Lunk',
+    bio: 'Dangerous to go alone. Take this bread.',
+    stats: { accel: 0.42, maxSpeed: 9, jump: 11.5, grip: 0.96 },
+    palette: { G: '#22c55e', Y: '#fde047', S: '#f1c27d', K: '#111', B: '#78350f', T: '#d4a373' },
+    art: [
+      '....GGG.....',
+      '...GGGGG....',
+      '..GGGGGGG...',
+      '..YYYYYYGG..',
+      '.YSSKSSKYG..',
+      '.YSSSSSSY.G.',
+      '..SSSSSS....',
+      '...SSSS..T..',
+      '..GGGGGG.T..',
+      '.SGGGGGGST..',
+      '.SGGBBGGTT..',
+      '..GGGGGG.T..',
+      '..GGGGGG....',
+      '..SS..SS....',
+      '.BBB..BBB...',
+      '.BBB..BBB...',
+    ],
+  },
+];
+
+const PIXEL = 3;                 // each art pixel becomes a 3x3 block on screen
+const PW = 12 * PIXEL, PH = 16 * PIXEL;
+
+function drawSprite(ch, x, y, facing, angle = 0, squash = 1) {
+  ctx.save();
+  ctx.translate(x + PW / 2, y + PH);           // pivot at the feet
+  ctx.rotate(angle);
+  ctx.scale(facing, squash);
+  ctx.translate(-PW / 2, -PH);
+  ch.art.forEach((row, ry) => {
+    for (let rx = 0; rx < row.length; rx++) {
+      const color = ch.palette[row[rx]];
+      if (!color) continue;
+      ctx.fillStyle = color;
+      ctx.fillRect(rx * PIXEL, ry * PIXEL, PIXEL, PIXEL);
+    }
+  });
+  ctx.restore();
+}
+
+// ---------- Input ----------
+const keys = {};
+addEventListener('keydown', e => {
+  keys[e.code] = true;
+  if (['Space', 'ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight'].includes(e.code)) e.preventDefault();
+  onKeyPress(e.code);
+});
+addEventListener('keyup', e => { keys[e.code] = false; });
+const left = () => keys.ArrowLeft || keys.KeyA;
+const right = () => keys.ArrowRight || keys.KeyD;
+const jumpHeld = () => keys.Space || keys.ArrowUp || keys.KeyW;
+
+// ---------- Game state ----------
+let mode = 'select';             // 'select' | 'play' | 'over'
+let selected = 0;
+let player, floors, camY, scrollSpeed, elapsed, score, bestFloor, combo, comboTimer, lastFloor, message, messageTimer;
+let highScore = 0;
+try { highScore = Number(localStorage.getItem('slipup-high')) || 0; } catch (e) {}
+
+function makeFloor(n) {
+  const y = -n * FLOOR_GAP;
+  if (n === 0 || n % 50 === 0) return { n, y, x: WALL, w: W - 2 * WALL };   // full-width checkpoint floors
+  const maxW = Math.max(70, 220 - n * 1.2);   // floors get narrower as you climb
+  const w = 70 + Math.random() * (maxW - 70);
+  const x = WALL + Math.random() * (W - 2 * WALL - w);
+  return { n, y, x, w };
+}
+
+function startGame() {
+  const ch = CHARACTERS[selected];
+  player = { ch, x: W / 2 - PW / 2, y: -PH, vx: 0, vy: 0, onGround: true, facing: 1, angle: 0, squash: 1, floor: 0 };
+  floors = [];
+  for (let n = 0; n < 12; n++) floors.push(makeFloor(n));
+  camY = -H + 60;               // camera top edge, in world coordinates (up is negative y)
+  scrollSpeed = 0;
+  elapsed = 0; score = 0; bestFloor = 0; combo = 0; comboTimer = 0; lastFloor = 0;
+  message = ''; messageTimer = 0;
+  mode = 'play';
+}
+
+function onKeyPress(code) {
+  if (mode === 'select') {
+    if (code === 'ArrowLeft' || code === 'KeyA') selected = (selected + CHARACTERS.length - 1) % CHARACTERS.length;
+    if (code === 'ArrowRight' || code === 'KeyD') selected = (selected + 1) % CHARACTERS.length;
+    if (code === 'Enter' || code === 'Space') startGame();
+  } else if (mode === 'over') {
+    if (code === 'KeyR' || code === 'Enter') startGame();
+    if (code === 'KeyC') mode = 'select';
+  }
+}
+
+// ---------- Physics (one fixed 1/60s tick) ----------
+function update() {
+  const p = player, s = p.ch.stats;
+  elapsed += STEP;
+
+  // Ice: holding a direction speeds you up; letting go you keep sliding (grip close to 1 = slippery)
+  const accel = p.onGround ? s.accel : s.accel * 0.6;
+  if (left()) { p.vx -= accel; p.facing = -1; }
+  if (right()) { p.vx += accel; p.facing = 1; }
+  if (!left() && !right() && p.onGround) p.vx *= s.grip;
+  p.vx = Math.max(-s.maxSpeed, Math.min(s.maxSpeed, p.vx));
+
+  // The faster you're running, the higher you jump — the core trick of the genre
+  if (jumpHeld() && p.onGround) {
+    p.vy = -(s.jump + Math.abs(p.vx) * 0.9);
+    p.onGround = false;
+    p.squash = 1.3;
+  }
+
+  p.vy += 0.55;                                 // gravity
+  if (!jumpHeld() && p.vy < -4) p.vy += 0.4;    // let go early for a shorter hop
+  p.x += p.vx;
+  const prevBottom = p.y + PH;
+  p.y += p.vy;
+
+  // Walls: hit one fast and you bounce off with most of your speed (and get an extra boost upward)
+  if (p.x < WALL || p.x + PW > W - WALL) {
+    p.x = p.x < WALL ? WALL : W - WALL - PW;
+    if (Math.abs(p.vx) > 4) {
+      p.vx = -p.vx * 0.9;
+      if (!p.onGround && p.vy < 0) p.vy -= 2;   // wall kick: slide up the wall
+      p.facing = Math.sign(p.vx);
+    } else p.vx = 0;
+  }
+
+  // Landing: floors are one-way (you pass through from below, land from above)
+  p.onGround = false;
+  if (p.vy >= 0) {
+    for (const f of floors) {
+      const bottom = p.y + PH;
+      const overlaps = p.x + PW - 8 > f.x && p.x + 8 < f.x + f.w;
+      if (overlaps && prevBottom <= f.y && bottom >= f.y) {
+        p.y = f.y - PH; p.vy = 0; p.onGround = true; p.angle = 0; p.squash = 0.8;
+        landOn(f.n);
+        break;
+      }
+    }
+  }
+
+  // Spin during big jumps, just for style
+  if (!p.onGround && p.vy < -15) p.angle += 0.25 * p.facing;
+  p.squash += (1 - p.squash) * 0.2;
+
+  // Spawn floors above, drop ones far below
+  while (floors[floors.length - 1].y > camY - FLOOR_GAP * 2) floors.push(makeFloor(floors[floors.length - 1].n + 1));
+  floors = floors.filter(f => f.y < camY + H + FLOOR_GAP);
+
+  // The tower "comes down": camera starts creeping up after 5s and speeds up over time
+  if (elapsed > 5) scrollSpeed = Math.min(5, 0.6 + (elapsed - 5) / 25);
+  camY -= scrollSpeed;
+  const pushLine = camY + H * 0.3;              // climbing fast pulls the camera up with you
+  if (p.y < pushLine) camY -= (pushLine - p.y) * 0.15;
+
+  if (comboTimer > 0 && --comboTimer === 0) endCombo();
+  if (messageTimer > 0) messageTimer--;
+
+  if (p.y > camY + H) gameOver();
+}
+
+function landOn(n) {
+  const p = player;
+  const gained = n - lastFloor;
+  if (gained >= 2) {                          // multi-floor jumps build a combo
+    combo += gained;
+    comboTimer = 180;                         // 3 seconds to keep it going
+  } else if (gained !== 0) {
+    endCombo();
+  }
+  lastFloor = n;
+  p.floor = n;
+  if (n > bestFloor) { score += (n - bestFloor) * 10; bestFloor = n; }
+}
+
+function endCombo() {
+  if (combo >= 4) {
+    score += combo * combo;
+    message = combo >= 20 ? `SICK! ${combo} floor combo` : combo >= 10 ? `GREAT! ${combo} floor combo` : `Nice: ${combo} floor combo`;
+    messageTimer = 120;
+  }
+  combo = 0; comboTimer = 0;
+}
+
+function gameOver() {
+  endCombo();
+  mode = 'over';
+  if (score > highScore) {
+    highScore = score;
+    try { localStorage.setItem('slipup-high', String(highScore)); } catch (e) {}
+  }
+}
+
+// ---------- Drawing ----------
+function drawBackground(offset) {
+  const g = ctx.createLinearGradient(0, 0, 0, H);
+  g.addColorStop(0, '#1e3a5f'); g.addColorStop(1, '#4a7ab0');
+  ctx.fillStyle = g; ctx.fillRect(0, 0, W, H);
+  // background bricks scroll slower than the floors (parallax)
+  ctx.strokeStyle = 'rgba(255,255,255,0.07)';
+  const bh = 24, shift = ((-offset * 0.5) % bh + bh) % bh;
+  for (let y = -bh + shift; y < H; y += bh) {
+    const row = Math.floor((y - shift - offset * 0.5) / bh);
+    for (let x = (row % 2 ? 0 : -24); x < W; x += 48) ctx.strokeRect(x, y, 48, bh);
+  }
+}
+
+function drawWalls() {
+  ctx.fillStyle = '#9fd3f5';
+  ctx.fillRect(0, 0, WALL, H); ctx.fillRect(W - WALL, 0, WALL, H);
+  ctx.fillStyle = '#dff3ff';
+  ctx.fillRect(WALL - 6, 0, 6, H); ctx.fillRect(W - WALL, 0, 6, H);
+}
+
+function drawFloors() {
+  for (const f of floors) {
+    const y = f.y - camY;
+    if (y < -20 || y > H + 20) continue;
+    ctx.fillStyle = f.n % 50 === 0 ? '#fbbf24' : '#bfe6ff';
+    ctx.fillRect(f.x, y, f.w, 14);
+    ctx.fillStyle = 'rgba(255,255,255,0.8)';
+    ctx.fillRect(f.x, y, f.w, 3);               // icy shine on top
+    ctx.fillStyle = '#5b8db8';
+    ctx.fillRect(f.x, y + 14, f.w, 3);
+    if (f.n % 10 === 0) {
+      ctx.fillStyle = '#0b1020'; ctx.font = 'bold 11px monospace'; ctx.textAlign = 'center';
+      ctx.fillText(f.n, f.x + f.w / 2, y + 11);
+    }
+  }
+}
+
+function text(str, x, y, size, color = '#fff', align = 'center') {
+  ctx.font = `bold ${size}px monospace`; ctx.textAlign = align;
+  ctx.fillStyle = '#0b1020'; ctx.fillText(str, x + 2, y + 2);
+  ctx.fillStyle = color; ctx.fillText(str, x, y);
+}
+
+function drawHUD() {
+  text(`FLOOR ${player.floor}`, WALL + 8, 26, 16, '#fff', 'left');
+  text(`SCORE ${score}`, W - WALL - 8, 26, 16, '#fde047', 'right');
+  if (combo >= 2) {
+    text(`COMBO x${combo}`, W / 2, 56, 18, '#f472b6');
+    ctx.fillStyle = '#f472b6'; ctx.fillRect(W / 2 - 50, 64, 100 * comboTimer / 180, 5);
+  }
+  if (messageTimer > 0) text(message, W / 2, H / 2 - 120, 22, '#fde047');
+  if (elapsed < 5) text('Run, then jump. Faster run = higher jump.', W / 2, H - 30, 13);
+}
+
+function drawSelect() {
+  drawBackground(0); drawWalls();
+  text('SLIP UP!', W / 2, 110, 48, '#e0f2fe');
+  text('choose your knockoff', W / 2, 145, 16, '#93c5fd');
+  const ch = CHARACTERS[selected];
+  ctx.save(); ctx.translate(W / 2 - PW, 210); ctx.scale(2, 2);
+  drawSprite(ch, 0, 0, 1);
+  ctx.restore();
+  text(`<  ${ch.name}  >`, W / 2, 360, 20, '#fde047');
+  text(`"${ch.bio}"`, W / 2, 390, 13, '#e2e8f0');
+  const s = ch.stats;
+  text(`speed ${'■'.repeat(Math.round(s.maxSpeed - 6))}   jump ${'■'.repeat(Math.round(s.jump - 8))}`, W / 2, 420, 13, '#93c5fd');
+  text('← → pick   ENTER start', W / 2, 480, 15);
+  text('arrows / WASD move · SPACE jump', W / 2, 505, 13, '#cbd5e1');
+  text(`best: ${highScore}`, W / 2, 560, 14, '#fde047');
+  text('All characters are parodies. Not affiliated with any real game.', W / 2, 615, 10, '#94a3b8');
+}
+
+function drawPlay() {
+  drawBackground(camY);
+  drawFloors();
+  drawWalls();
+  drawSprite(player.ch, player.x, player.y - camY, player.facing, player.angle, player.squash);
+  drawHUD();
+}
+
+function drawOver() {
+  drawPlay();
+  ctx.fillStyle = 'rgba(11,16,32,0.75)'; ctx.fillRect(0, 0, W, H);
+  text('YOU SLIPPED', W / 2, 220, 40, '#f87171');
+  text(`floor ${bestFloor} · score ${score}`, W / 2, 270, 20);
+  text(`best ${highScore}`, W / 2, 300, 16, '#fde047');
+  text('R retry · C change character', W / 2, 360, 15);
+}
+
+// ---------- Main loop: fixed-step physics, draw every frame ----------
+let last = performance.now(), acc = 0;
+function frame(now) {
+  acc += Math.min(0.25, (now - last) / 1000);
+  last = now;
+  while (acc >= STEP) {
+    if (mode === 'play') update();
+    acc -= STEP;
+  }
+  if (mode === 'select') drawSelect();
+  else if (mode === 'play') drawPlay();
+  else drawOver();
+  requestAnimationFrame(frame);
+}
+requestAnimationFrame(frame);
+</script>
+</body>
+</html>
