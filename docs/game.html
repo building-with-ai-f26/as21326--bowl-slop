@@ -261,11 +261,12 @@ function update() {
 
   // Ice: holding a direction speeds you up; letting go you keep sliding (grip close to 1 = slippery)
   const accel = p.onGround ? s.accel : s.accel * 0.6;
+  const prevSpeed = Math.abs(p.vx);
   if (left()) { p.vx -= accel; p.facing = -1; }
   if (right()) { p.vx += accel; p.facing = 1; }
   if (!left() && !right() && p.onGround) p.vx *= s.grip;
   // Normal top speed is maxSpeed, but a wall bounce can push you past it; that extra speed fades slowly
-  const cap = Math.max(s.maxSpeed, Math.abs(p.vx) * 0.99);
+  const cap = Math.max(s.maxSpeed, prevSpeed * 0.99);
   p.vx = Math.max(-cap, Math.min(cap, p.vx));
   if (p.onGround) p.anim += Math.abs(p.vx) * 0.12;
 
