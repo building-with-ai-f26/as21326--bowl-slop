@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-<title>Slip Up! · Tower Climber Prototype</title>
+<title>Mount Neverest · Tower Climber Prototype</title>
 <style>
   html, body { margin: 0; height: 100%; background: #0b1020; }
   body { display: flex; align-items: center; justify-content: center; font-family: -apple-system, "Segoe UI", sans-serif; }
@@ -426,8 +426,9 @@ function drawHUD() {
 
 function drawSelect() {
   drawBackground(0); drawWalls();
-  text('SLIP UP!', W / 2, 110, 48, '#e0f2fe');
-  text('choose your knockoff', W / 2, 145, 16, '#93c5fd');
+  text('MOUNT', W / 2, 88, 40, '#e0f2fe');
+  text('NEVEREST', W / 2, 132, 40, '#e0f2fe');
+  text('choose your knockoff', W / 2, 165, 16, '#93c5fd');
   const ch = CHARACTERS[selected];
   ctx.save(); ctx.translate(W / 2 - PW, 210); ctx.scale(2, 2);
   drawSprite(ch, 0, 0, 1, 0, 1, performance.now() / 120);

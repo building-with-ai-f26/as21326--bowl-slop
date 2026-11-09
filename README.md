@@ -1,4 +1,4 @@
-# Slip Up!
+# Mount Neverest
 
 > **One-line pitch:** A 60-second icy tower-climbing game for students killing time between classes: no install, no ads, no account.
 
