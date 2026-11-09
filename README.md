@@ -4,8 +4,8 @@
 
 - **Builder:** Adam Shlomi (`@nimble-nipple`)
 - **Pod:** [Pod Name / Number]
-- **Product Page & Living PRD:** https://nimble-nipple.github.io/-as21326---bowl-slop/
-- **Play the prototype:** https://nimble-nipple.github.io/-as21326---bowl-slop/game.html (or open `docs/game.html` in any browser)
+- **Product Page & Living PRD:** https://building-with-ai-f26.github.io/as21326--bowl-slop/
+- **Play the prototype:** https://building-with-ai-f26.github.io/as21326--bowl-slop/game.html (or open `docs/game.html` in any browser)
 - **App:** runs locally through Week 4; add a cloud URL in Build 5.
 
 ## Start here: Build 1
