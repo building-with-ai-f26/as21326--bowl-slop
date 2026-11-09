@@ -3,15 +3,15 @@
 > Give this file to your coding agent and check that it is using these instructions. Keep the stack, commands, and ground rules current.
 
 ## 1. Project Overview
-- **What this repo builds:** [1–2 sentence summary]
+- **What this repo builds:** Slip Up!, a browser tower-climbing game with icy, momentum-based jumps and parody characters, plus its Product Page.
 - **Primary user & core workflow:** [See the living PRD in `docs/index.html`]
-- **Tech stack:** [e.g., Python 3.12 / FastAPI / Next.js / SQLite / OpenRouter API]
+- **Tech stack:** One static HTML file with plain JavaScript and the Canvas API (`docs/game.html`). No build step, no libraries, no backend, no API keys. Hosted on GitHub Pages from `/docs`.
 
 ## 2. Commands
-- **Install dependencies:** `[e.g., npm install / uv sync]`
-- **Run locally:** `[e.g., npm run dev]`
-- **Run deterministic tests:** `[e.g., pytest / npm test]`
-- **Run model evals:** `[e.g., python tests/eval.py]`
+- **Install dependencies:** none
+- **Run locally:** open `docs/game.html` in a browser (double-click it, or `open docs/game.html` on macOS)
+- **Run deterministic tests:** none yet; Build 1 was checked by hand and with in-browser bot play-tests
+- **Run model evals:** n/a (no AI model in the product)
 
 ## 3. Non-Negotiable Engineering Rules
 1. **Plan before coding:** Before touching multiple files, propose a brief plan and wait for approval.

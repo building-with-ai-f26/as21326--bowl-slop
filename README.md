@@ -1,10 +1,11 @@
-# [Project Name]
+# Slip Up!
 
-> **One-line pitch:** [Who is this for, and what job does it do for them?]
+> **One-line pitch:** A 60-second icy tower-climbing game for students killing time between classes: no install, no ads, no account.
 
-- **Builder:** [Your Name] (`@github-handle`)
+- **Builder:** Adam Shlomi (`@nimble-nipple`)
 - **Pod:** [Pod Name / Number]
-- **Product Page & Living PRD:** [Add your GitHub Pages URL]
+- **Product Page & Living PRD:** https://nimble-nipple.github.io/-as21326---bowl-slop/
+- **Play the prototype:** https://nimble-nipple.github.io/-as21326---bowl-slop/game.html (or open `docs/game.html` in any browser)
 - **App:** runs locally through Week 4; add a cloud URL in Build 5.
 
 ## Start here: Build 1

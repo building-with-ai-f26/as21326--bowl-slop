@@ -20,6 +20,7 @@ const W = canvas.width, H = canvas.height;
 const WALL = 32;              // thickness of the side walls
 const FLOOR_GAP = 90;         // vertical distance between floors
 const STEP = 1 / 60;          // physics runs at a fixed 60 ticks/sec
+const SPEED_LIMIT = 40;       // safety ceiling only (~4.5x a normal run): without it, wall-to-wall bouncing grows speed to Infinity and crashes the game
 
 // ---------- Parody characters (vector art drawn with canvas shapes) ----------
 // Each character draws itself inside a 36x48 box, facing right, feet at the bottom.
@@ -57,7 +58,7 @@ const CHARACTERS = [
   {
     name: 'Super Marinara',
     bio: "It's-a me, a pasta.",
-    stats: { accel: 0.45, maxSpeed: 9, jump: 11, grip: 0.97 },
+    stats: { accel: 0.45, jump: 11, grip: 0.97 },
     draw(t, air) {
       legs(t, air, 38, (x, hip, foot) => {
         box(x - 3, hip, 6, foot - hip - 2, 2, '#1d4ed8');
@@ -96,7 +97,7 @@ const CHARACTERS = [
   {
     name: 'Soggy the Hedgehog',
     bio: 'Gotta go... eventually.',
-    stats: { accel: 0.5, maxSpeed: 10.5, jump: 10.5, grip: 0.985 },
+    stats: { accel: 0.5, jump: 10.5, grip: 0.985 },
     draw(t, air) {
       legs(t, air, 36, (x, hip, foot) => {
         box(x - 1.5, hip, 3, foot - hip - 2, 1.5, '#1e40af');
@@ -132,7 +133,7 @@ const CHARACTERS = [
   {
     name: 'Tax-Man',
     bio: 'Wakka wakka. You owe 30%.',
-    stats: { accel: 0.38, maxSpeed: 8.5, jump: 12.5, grip: 0.97 },
+    stats: { accel: 0.38, jump: 12.5, grip: 0.97 },
     draw(t, air) {
       legs(t, air, 38, (x, hip, foot) => {
         ctx.save(); ctx.lineWidth = 2.5; ctx.beginPath(); ctx.moveTo(x, hip); ctx.lineTo(x, foot - 2); ctx.stroke(); ctx.restore();
@@ -162,7 +163,7 @@ const CHARACTERS = [
   {
     name: 'Lunk',
     bio: 'Dangerous to go alone. Take this bread.',
-    stats: { accel: 0.42, maxSpeed: 9, jump: 11.5, grip: 0.96 },
+    stats: { accel: 0.42, jump: 11.5, grip: 0.96 },
     draw(t, air) {
       legs(t, air, 38, (x, hip, foot) => {
         box(x - 2.5, hip, 5, foot - hip - 4, 2, '#f5e6c8');
@@ -211,6 +212,8 @@ addEventListener('keydown', e => {
   onKeyPress(e.code);
 });
 addEventListener('keyup', e => { keys[e.code] = false; });
+// If the window loses focus mid-press, the keyup never arrives, so forget every held key
+addEventListener('blur', () => { for (const k in keys) keys[k] = false; });
 const left = () => keys.ArrowLeft || keys.KeyA;
 const right = () => keys.ArrowRight || keys.KeyD;
 const jumpHeld = () => keys.Space || keys.ArrowUp || keys.KeyW;
@@ -261,13 +264,13 @@ function update() {
 
   // Ice: holding a direction speeds you up; letting go you keep sliding (grip close to 1 = slippery)
   const accel = p.onGround ? s.accel : s.accel * 0.6;
-  const prevSpeed = Math.abs(p.vx);
   if (left()) { p.vx -= accel; p.facing = -1; }
   if (right()) { p.vx += accel; p.facing = 1; }
   if (!left() && !right() && p.onGround) p.vx *= s.grip;
-  // Normal top speed is maxSpeed, but a wall bounce can push you past it; that extra speed fades slowly
-  const cap = Math.max(s.maxSpeed, prevSpeed * 0.99);
-  p.vx = Math.max(-cap, Math.min(cap, p.vx));
+  // No normal top speed: the longer you run, the faster you go. The main brake is a little
+  // drag (lose 1% of your speed every tick), so speed builds up gradually.
+  p.vx *= 0.99;
+  p.vx = Math.max(-SPEED_LIMIT, Math.min(SPEED_LIMIT, p.vx));
   if (p.onGround) p.anim += Math.abs(p.vx) * 0.12;
 
   // The faster you're running, the higher you jump — the core trick of the genre.
@@ -292,7 +295,7 @@ function update() {
   if (p.x < WALL || p.x + PW > W - WALL) {
     p.x = p.x < WALL ? WALL : W - WALL - PW;
     if (Math.abs(p.vx) > 4) {
-      p.vx = -Math.sign(p.vx) * Math.min(Math.abs(p.vx) * 1.15, s.maxSpeed * 1.4);
+      p.vx = -Math.sign(p.vx) * Math.min(Math.abs(p.vx) * 1.15, SPEED_LIMIT);
       p.wallKick = 12;                          // 12 ticks = 0.2 seconds to press jump
       if (!p.onGround && p.vy < 0) p.vy -= 2;   // wall kick: slide up the wall
       p.facing = Math.sign(p.vx);
@@ -335,7 +338,8 @@ function update() {
 
 function landOn(n) {
   const p = player;
-  const gained = n - lastFloor;
+  // Measure from your highest floor so far, so dropping down and re-climbing old floors can't farm combos
+  const gained = n - Math.max(lastFloor, bestFloor);
   if (gained >= 2) {                          // multi-floor jumps build a combo
     combo += gained;
     comboTimer = 180;                         // 3 seconds to keep it going
@@ -431,7 +435,7 @@ function drawSelect() {
   text(`<  ${ch.name}  >`, W / 2, 360, 20, '#fde047');
   text(`"${ch.bio}"`, W / 2, 390, 13, '#e2e8f0');
   const s = ch.stats;
-  text(`speed ${'■'.repeat(Math.round(s.maxSpeed - 6))}   jump ${'■'.repeat(Math.round(s.jump - 8))}`, W / 2, 420, 13, '#93c5fd');
+  text(`speed ${'■'.repeat(Math.round((s.accel - 0.3) * 20))}   jump ${'■'.repeat(Math.round(s.jump - 8))}`, W / 2, 420, 13, '#93c5fd');
   text('← → pick   ENTER start', W / 2, 480, 15);
   text('arrows / WASD move · SPACE jump', W / 2, 505, 13, '#cbd5e1');
   text('tip: jump right after a wall bounce = WALL KICK', W / 2, 528, 12, '#f472b6');
