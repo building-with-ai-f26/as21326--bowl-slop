@@ -162,8 +162,8 @@
     <section id="live-demo">
       <h2>Product Showcase (Prototype / Live App / 2-Min Video)</h2>
       <p>
-        <strong>Current Status:</strong> Build 1: rough local prototype (one HTML file, runs in any browser)<br />
-        <strong>Demo:</strong> <a href="game.html">Play the prototype →</a> (arrows/WASD to move, Space to jump)
+        <strong>Current Status:</strong> Build 2: playable game + a real AI call (Claude Haiku writes a one-line coach tip when you lose; runs locally with <code>node server.js</code>) + PostHog analytics on this page and in the game<br />
+        <strong>Demo:</strong> <a href="game.html">Play the game →</a> (arrows/WASD to move, Space to jump). The AI coach line only appears when run locally; this hosted page is static and has no server.
       </p>
       <img src="img/gameplay.png" alt="Gameplay: Lunk mid-jump on floor 11 with a 7-floor combo" style="max-width: 320px; width: 100%; border-radius: 8px; border: 1px solid var(--border);" />
       <p class="meta">
@@ -184,25 +184,27 @@
 
       <h3>2. Scope & Explicit Non-Goals</h3>
       <ul>
-        <li><strong>In Scope (Core Workflow):</strong> Open link → pick a character → run on slippery floors and build speed for bigger jumps → climb faster than the tower scrolls → fall → see score and best → restart with one key.</li>
-        <li><strong>Out of Scope #1:</strong> Accounts, online leaderboards, or any backend. Best score lives only in your own browser.</li>
+        <li><strong>In Scope (Core Workflow):</strong> Open link → pick a character → run on slippery floors and build speed for bigger jumps → climb faster than the tower scrolls → fall → see score, best, and a one-line AI coach tip → restart with one key.</li>
+        <li><strong>Out of Scope #1:</strong> Accounts and online leaderboards. <em>(v2 change: there is now a tiny local server, but only to hold the API key and make the AI call. It stores nothing.)</em> Best score lives only in your own browser.</li>
         <li><strong>Out of Scope #2:</strong> Phone/touch controls. Keyboard on a laptop only.</li>
         <li><strong>Out of Scope #3:</strong> Story mode, multiple levels, power-ups, shops, or any monetization.</li>
       </ul>
 
       <h3>3. How It Works Under the Hood & Riskiest Assumption (Week 2+)</h3>
-      <p><strong>Riskiest Assumption:</strong> [What is the #1 technical or user risk that could sink this product?]</p>
-      <p><strong>Simple Architecture:</strong> [User Input] → [Your App / Server] → [AI Model / Tool] → [Output]</p>
+      <p><strong>Riskiest Assumption:</strong> That a 60-second game this simple makes someone press retry. If a first-time player plays one run and leaves, nothing else matters. A smaller technical risk is that the AI call is slow or fails and makes the game feel broken.</p>
+      <p><strong>How Build 2 tests it:</strong> PostHog records <code>run_started</code> and <code>run_ended</code> for every run, so I can count runs per player and per session and watch session replays of first-time players. The coach call is fire-and-forget: if it is slow or fails the game keeps working, and <code>coach_received</code> / <code>coach_failed</code> events measure how often that happens. First real-API check: 5 of 5 calls succeeded in 0.9–2.0 seconds.</p>
+      <p><strong>Simple Architecture:</strong> [Player loses a run in the browser] → [<code>game.html</code> sends character, floor, score to <code>POST /api/coach</code>] → [<code>server.js</code> (local Node, holds <code>ANTHROPIC_API_KEY</code> from <code>.env</code>) calls the Claude API, model <code>claude-haiku-5-5</code>] → [one-sentence taunt + tip returns and is drawn on the game-over screen]. In parallel, the PostHog snippet in the browser sends pageviews, clicks, game events and session replay to PostHog. The API key never reaches the browser; only PostHog's public project key does.</p>
+      <p><strong>What would break:</strong> no <code>.env</code> key → the server returns 503 and the game just shows no tip. No server (this GitHub Pages site) → the request 404s and the game shows no tip. A slow reply is ignored if the player already restarted.</p>
 
       <h3>4. Unit Economics & Analytics Snapshot (Updated Weekly)</h3>
       <div class="grid-2">
         <div class="stat-box">
           <div class="stat-label">Cumulative Build Spend</div>
-          <div class="stat-value">$0 extra (subscription)</div>
+          <div class="stat-value">≈ $0.01 in API tests + Claude Code subscription</div>
         </div>
         <div class="stat-box">
           <div class="stat-label">Est. Cost Per User Run</div>
-          <div class="stat-value">$0 (runs in the browser)</div>
+          <div class="stat-value">≈ $0.000035 (about 133 input + 43 output tokens at Haiku 5.5 rates of $0.10 / $0.50 per million), so about 4 cents per 1,000 games</div>
         </div>
         <div class="stat-box">
           <div class="stat-label">User Evidence (Analytics from Build 2)</div>
@@ -233,9 +235,9 @@
       <div class="log-entry">
         <h3>Build 2 · Smallest Local Version & PostHog (Due Nov 16)</h3>
         <ul>
-          <li><strong>What shipped:</strong> [Local working slice, PostHog verified on this page and the local app, PRD v2, and local setup in AGENTS.md]</li>
-          <li><strong>What broke / changed in PRD:</strong> [Fill in]</li>
-          <li><strong>Cost & time this week:</strong> $[0.00] · [0] hours</li>
+          <li><strong>What shipped:</strong> (1) <em>A real AI call:</em> when you lose a run, the game sends your character, floor and score to a small local Node server (<a href="https://github.com/building-with-ai-f26/as21326--bowl-slop/blob/main/server.js">server.js</a>), which asks Claude Haiku 5.5 for a one-sentence taunt plus a tip and shows it on the game-over screen. The API key lives in a git-ignored <code>.env</code> and never reaches the browser. (2) <em>PostHog</em> on this page (pageview, <code>clicked_try_product</code> on the product button) and in the game (<code>run_started</code>, <code>run_ended</code>, <code>coach_requested</code>, <code>coach_received</code>, <code>coach_failed</code>, plus session replay). The character screen tells testers that anonymous play stats and replay are recorded, and the game has no text inputs, so nothing sensitive is captured. (3) PRD v2 above, and <a href="https://github.com/building-with-ai-f26/as21326--bowl-slop/blob/main/AGENTS.md">AGENTS.md</a> now has the structure plus setup and run steps (<code>cp .env.example .env</code>, <code>node server.js</code>).</li>
+          <li><strong>What broke / changed in PRD:</strong> The PostHog code I committed on Nov 9 never reached this page: GitHub's Pages deploy for that commit failed, so the site kept serving the older placeholder. I re-triggered the deploy and confirmed the live page now has the snippet. First AI test: 2 of 3 calls came back empty, because the reply's first content block had no text (Haiku 5.5 can return a non-text block first), and the third was cut off at my 60-token cap. Fix: take the first block that actually contains text, raise the cap to 150, and tighten the prompt to one short sentence. After that, 5 of 5 calls worked (0.9–2.0 s). PRD change: "no backend" became "a tiny local server that only holds the key and makes the AI call." The riskiest assumption is now whether players press retry, tested with PostHog run counts and replays.</li>
+          <li><strong>Cost & time this week:</strong> ≈ $0.01 API testing (8 Haiku calls at ≈ $0.000035 each) + Claude Code on my existing subscription · 1 hour</li>
         </ul>
       </div>
 

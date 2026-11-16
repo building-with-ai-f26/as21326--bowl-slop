@@ -251,7 +251,9 @@ function startGame() {
   scrollSpeed = 0;
   elapsed = 0; score = 0; bestFloor = 0; combo = 0; comboTimer = 0; lastFloor = 0;
   message = ''; messageTimer = 0;
+  coachLine = '';
   mode = 'play';
+  track('run_started', { character: ch.name });
 }
 
 function onKeyPress(code) {
@@ -375,6 +377,44 @@ function gameOver() {
     highScore = score;
     try { localStorage.setItem('slipup-high', String(highScore)); } catch (e) {}
   }
+  track('run_ended', { character: player.ch.name, floor: bestFloor, score, seconds: Math.round(elapsed) });
+  askCoach();
+}
+
+// Analytics helper: never let a blocked/failed PostHog break the game.
+function track(event, props) {
+  try { window.posthog && posthog.capture(event, props); } catch (e) {}
+}
+
+// The one AI/API call: ask the local server (server.js) for a one-line taunt + tip.
+// Where there is no server (e.g. GitHub Pages) the request 404s and we simply show nothing.
+let coachLine = '';
+async function askCoach() {
+  const payload = { character: player.ch.name, floor: bestFloor, score, best: highScore };
+  track('coach_requested', { floor: bestFloor });
+  const t0 = performance.now();
+  try {
+    const r = await fetch('/api/coach', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload),
+    });
+    if (!r.ok) throw new Error('status ' + r.status);
+    const j = await r.json();
+    if (mode === 'over') coachLine = j.line;   // ignore a late answer if they already restarted
+    track('coach_received', { ms: Math.round(performance.now() - t0), tokens_out: j.usage && j.usage.output_tokens });
+  } catch (e) {
+    track('coach_failed', { reason: String(e.message).slice(0, 60) });
+  }
+}
+
+function wrapText(str, maxChars) {
+  const lines = []; let cur = '';
+  for (const w of str.split(' ')) {
+    if ((cur + ' ' + w).trim().length > maxChars) { lines.push(cur); cur = w; } else cur = (cur + ' ' + w).trim();
+  }
+  if (cur) lines.push(cur);
+  return lines;
 }
 
 // ---------- Drawing ----------
@@ -449,6 +489,7 @@ function drawSelect() {
   text('arrows / WASD move · SPACE jump', W / 2, 505, 13, '#cbd5e1');
   text('tip: jump right after a wall bounce = WALL KICK', W / 2, 528, 12, '#f472b6');
   text(`best: ${highScore}`, W / 2, 560, 14, '#fde047');
+  text('Playtest notice: anonymous play stats and session replay are recorded.', W / 2, 595, 10, '#94a3b8');
   text('All characters are parodies. Not affiliated with any real game.', W / 2, 615, 10, '#94a3b8');
 }
 
@@ -466,7 +507,8 @@ function drawOver() {
   text('YOU SLIPPED', W / 2, 220, 40, '#f87171');
   text(`floor ${bestFloor} · score ${score}`, W / 2, 270, 20);
   text(`best ${highScore}`, W / 2, 300, 16, '#fde047');
-  text('R retry · C change character', W / 2, 360, 15);
+  if (coachLine) wrapText(coachLine, 38).forEach((ln, i) => text(ln, W / 2, 335 + i * 20, 14, '#a7f3d0'));
+  text('R retry · C change character', W / 2, 420, 15);
 }
 
 // ---------- Main loop: fixed-step physics, draw every frame ----------

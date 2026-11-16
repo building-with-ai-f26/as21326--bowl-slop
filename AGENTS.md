@@ -4,14 +4,16 @@
 
 ## 1. Project Overview
 - **What this repo builds:** Mount Neverest, a browser tower-climbing game with icy, momentum-based jumps and parody characters, plus its Product Page.
-- **Primary user & core workflow:** [See the living PRD in `docs/index.html`]
-- **Tech stack:** One static HTML file with plain JavaScript and the Canvas API (`docs/game.html`). No build step, no libraries, no backend, no API keys. Hosted on GitHub Pages from `/docs`.
+- **Primary user & core workflow:** NYU students with 5–10 spare minutes: open link → pick a character → climb → fall → read a one-line AI coach tip → retry. Full PRD in `docs/index.html`.
+- **Tech stack:** Game = one static HTML file, plain JavaScript + Canvas (`docs/game.html`). Coach = a ~90-line dependency-free Node server (`server.js`) that serves `docs/` and exposes `POST /api/coach`, which calls an LLM through the Anthropic API (Claude Haiku). Analytics = PostHog (public `phc_` project key in the HTML; that key can only send events). Product Page + game are hosted on GitHub Pages from `/docs` (static: the coach only works locally).
+- **Structure:** `docs/index.html` Product Page + living PRD + build log · `docs/game.html` the game · `server.js` local server + AI call · `journal/` optional notes · `.env` (git-ignored) holds the Anthropic API key.
 
 ## 2. Commands
-- **Install dependencies:** none
-- **Run locally:** open `docs/game.html` in a browser (double-click it, or `open docs/game.html` on macOS)
+- **Install dependencies:** none (needs Node 20+)
+- **Set up secrets:** `cp .env.example .env`, then put your Anthropic API key in `.env`
+- **Run locally:** `node server.js`, then open http://localhost:8123 (the game still runs without a key; the coach line just won't appear)
 - **Run deterministic tests:** none yet; Build 1 was checked by hand and with in-browser bot play-tests
-- **Run model evals:** n/a (no AI model in the product)
+- **Run model evals:** none yet (Build 4). Manual check: finish a run and confirm a coach line appears and `coach_received` shows in PostHog
 
 ## 3. Non-Negotiable Engineering Rules
 1. **Plan before coding:** Before touching multiple files, propose a brief plan and wait for approval.
