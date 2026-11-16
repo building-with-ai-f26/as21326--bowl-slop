@@ -56,7 +56,7 @@ async function coach(req, res) {
     const r = await fetch('https://api.anthropic.com/v1/messages', {
       method: 'POST',
       headers: { 'x-api-key': key, 'anthropic-version': '2023-06-01', 'Content-Type': 'application/json' },
-      body: JSON.stringify({ model: MODEL, max_tokens: 150, messages: [{ role: 'user', content: prompt }] }),
+      body: JSON.stringify({ model: MODEL, max_tokens: 150, thinking: { type: 'disabled' }, messages: [{ role: 'user', content: prompt }] }),
       signal: AbortSignal.timeout(8000),
     });
     const j = await r.json();
