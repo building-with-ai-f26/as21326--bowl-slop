@@ -200,7 +200,7 @@
       <div class="grid-2">
         <div class="stat-box">
           <div class="stat-label">Cumulative Build Spend</div>
-          <div class="stat-value">≈ $0.01 in API tests + Claude Code subscription</div>
+          <div class="stat-value">< $0.001 in API tests + Claude Code subscription</div>
         </div>
         <div class="stat-box">
           <div class="stat-label">Est. Cost Per User Run</div>
@@ -237,7 +237,7 @@
         <ul>
           <li><strong>What shipped:</strong> (1) <em>A real AI call:</em> when you lose a run, the game sends your character, floor and score to a small local Node server (<a href="https://github.com/building-with-ai-f26/as21326--bowl-slop/blob/main/server.js">server.js</a>), which asks Claude Haiku 5.5 for a one-sentence taunt plus a tip and shows it on the game-over screen. The API key lives in a git-ignored <code>.env</code> and never reaches the browser. (2) <em>PostHog</em> on this page (pageview, <code>clicked_try_product</code> on the product button) and in the game (<code>run_started</code>, <code>run_ended</code>, <code>coach_requested</code>, <code>coach_received</code>, <code>coach_failed</code>, plus session replay). The character screen tells testers that anonymous play stats and replay are recorded, and the game has no text inputs, so nothing sensitive is captured. (3) PRD v2 above, and <a href="https://github.com/building-with-ai-f26/as21326--bowl-slop/blob/main/AGENTS.md">AGENTS.md</a> now has the structure plus setup and run steps (<code>cp .env.example .env</code>, <code>node server.js</code>).</li>
           <li><strong>What broke / changed in PRD:</strong> The PostHog code I committed on Nov 9 never reached this page: GitHub's Pages deploy for that commit failed, so the site kept serving the older placeholder. I re-triggered the deploy and confirmed the live page now has the snippet. First AI test: 2 of 3 calls came back empty, because the reply's first content block had no text (Haiku 5.5 can return a non-text block first), and the third was cut off at my 60-token cap. Fix: take the first block that actually contains text, raise the cap to 150, and tighten the prompt to one short sentence. After that, 5 of 5 calls worked (0.9–2.0 s). PRD change: "no backend" became "a tiny local server that only holds the key and makes the AI call." The riskiest assumption is now whether players press retry, tested with PostHog run counts and replays.</li>
-          <li><strong>Cost & time this week:</strong> ≈ $0.01 API testing (8 Haiku calls at ≈ $0.000035 each) + Claude Code on my existing subscription · 1 hour</li>
+          <li><strong>Cost & time this week:</strong> < $0.001 API testing (8 Haiku calls at ≈ $0.000035 each) + Claude Code on my existing subscription · 1 hour</li>
         </ul>
       </div>
 

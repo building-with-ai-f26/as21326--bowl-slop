@@ -389,7 +389,9 @@ function track(event, props) {
 // The one AI/API call: ask the local server (server.js) for a one-line taunt + tip.
 // Where there is no server (e.g. GitHub Pages) the request 404s and we simply show nothing.
 let coachLine = '';
+let coachSeq = 0;   // lets us ignore a reply that belongs to an older run
 async function askCoach() {
+  const mySeq = ++coachSeq;
   const payload = { character: player.ch.name, floor: bestFloor, score, best: highScore };
   track('coach_requested', { floor: bestFloor });
   const t0 = performance.now();
@@ -401,7 +403,8 @@ async function askCoach() {
     });
     if (!r.ok) throw new Error('status ' + r.status);
     const j = await r.json();
-    if (mode === 'over') coachLine = j.line;   // ignore a late answer if they already restarted
+    if (mode !== 'over' || mySeq !== coachSeq) return;   // stale reply from an earlier run: drop it
+    coachLine = j.line;
     track('coach_received', { ms: Math.round(performance.now() - t0), tokens_out: j.usage && j.usage.output_tokens });
   } catch (e) {
     track('coach_failed', { reason: String(e.message).slice(0, 60) });

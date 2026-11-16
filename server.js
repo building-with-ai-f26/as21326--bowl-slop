@@ -3,7 +3,7 @@
 //  - POST /api/coach: takes {character, floor, score, best}, asks Claude Haiku via the Anthropic API
 //    for a one-line parody taunt, and returns {line}.
 // The Anthropic key lives only in .env on the server; it never reaches the browser.
-// Run: node server.js   (Node 20+, no dependencies)
+// Run: node server.js   (Node 20.12+, no dependencies)
 
 const fs = require('fs');
 const path = require('path');
@@ -26,6 +26,10 @@ function readBody(req) {
 }
 
 async function coach(req, res) {
+  // Require JSON content type (forces a CORS preflight for other sites) and a local Host header.
+  if (!(req.headers['content-type'] || '').startsWith('application/json') || !/^(localhost|127\.0\.0\.1)(:\d+)?$/.test(req.headers.host || '')) {
+    res.writeHead(400); return res.end('bad request');
+  }
   const key = process.env.ANTHROPIC_API_KEY;
   if (!key || key.includes('replace-with')) {
     res.writeHead(503, { 'Content-Type': 'application/json' });

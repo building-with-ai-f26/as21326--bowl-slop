@@ -9,7 +9,7 @@
 - **Structure:** `docs/index.html` Product Page + living PRD + build log · `docs/game.html` the game · `server.js` local server + AI call · `journal/` optional notes · `.env` (git-ignored) holds the Anthropic API key.
 
 ## 2. Commands
-- **Install dependencies:** none (needs Node 20+)
+- **Install dependencies:** none (needs Node 20.12+)
 - **Set up secrets:** `cp .env.example .env`, then put your Anthropic API key in `.env`
 - **Run locally:** `node server.js`, then open http://localhost:8123 (the game still runs without a key; the coach line just won't appear)
 - **Run deterministic tests:** none yet; Build 1 was checked by hand and with in-browser bot play-tests
