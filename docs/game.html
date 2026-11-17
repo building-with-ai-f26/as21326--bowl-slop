@@ -1125,7 +1125,11 @@ function track(event, props) {
 // Where there is no server (e.g. GitHub Pages) the request 404s and we simply show nothing.
 let coachLine = '';
 let coachSeq = 0;   // lets us ignore a reply that belongs to an older run
+// The coach needs server.js, which only exists when running locally. On the static hosted copy
+// (GitHub Pages) there is nothing to call, so skip it instead of logging a guaranteed failure.
+const COACH_AVAILABLE = ['localhost', '127.0.0.1'].includes(location.hostname);
 async function askCoach() {
+  if (!COACH_AVAILABLE) return;
   const mySeq = ++coachSeq;
   const payload = { character: player.ch.name, floor: bestFloor, score, best: highScore };
   track('coach_requested', { floor: bestFloor });
