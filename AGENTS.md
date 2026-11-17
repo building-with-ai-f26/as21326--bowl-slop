@@ -3,15 +3,16 @@
 > Give this file to your coding agent and check that it is using these instructions. Keep the stack, commands, and ground rules current.
 
 ## 1. Project Overview
-- **What this repo builds:** Mount Neverest, a browser tower-climbing game with icy, momentum-based jumps and parody characters, plus its Product Page.
-- **Primary user & core workflow:** NYU students with 5–10 spare minutes: open link → pick a character → climb → fall → read a one-line AI coach tip → retry. Full PRD in `docs/index.html`.
-- **Tech stack:** Game = one static HTML file, plain JavaScript + Canvas (`docs/game.html`). Coach = a ~90-line dependency-free Node server (`server.js`) that serves `docs/` and exposes `POST /api/coach`, which calls an LLM through the Anthropic API (Claude Haiku). Analytics = PostHog (public `phc_` project key in the HTML; that key can only send events). Product Page + game are hosted on GitHub Pages from `/docs` (static: the coach only works locally).
-- **Structure:** `docs/index.html` Product Page + living PRD + build log · `docs/game.html` the game · `server.js` local server + AI call · `journal/` optional notes · `.env` (git-ignored) holds the Anthropic API key.
+- **What this repo builds:** Mount Neverest, a browser tower-climbing game with icy, momentum-based jumps and four parody heroes, plus its Product Page.
+- **Primary user & core workflow:** NYU students with 5–10 spare minutes: open link → pick a hero → climb (dodge villain beams, grab power-ups, ride moving and slanted platforms) → fall → read a one-line AI coach tip → retry. Full PRD in `docs/index.html`.
+- **Tech stack:** Game = plain JavaScript + Canvas, no build step: `docs/game.html` (physics, levels, enemies, power-ups, menus, keyboard + touch/tilt controls), `docs/characters.js` (hero perks and villain art), `docs/audio.js` (Web Audio music and sound effects, no files). Coach = a small dependency-free Node server (`server.js`) that serves `docs/` and exposes `POST /api/coach`, which calls Claude Haiku through the Anthropic API. Analytics = PostHog (public `phc_` project key in the HTML; it can only send events). Hosted on GitHub Pages from `/docs` (static, so the coach only works locally).
+- **Structure:** `docs/index.html` Product Page + living PRD + build log · `docs/game.html`, `characters.js`, `audio.js` the game · `server.js` local server + AI call · `journal/` optional notes · `.env` (git-ignored) holds the Anthropic API key.
+- **Rule for content:** original parody characters only. No licensed characters, art or promo material in this public repo.
 
 ## 2. Commands
 - **Install dependencies:** none (needs Node 20.12+)
 - **Set up secrets:** `cp .env.example .env`, then put your Anthropic API key in `.env`
-- **Run locally:** `node server.js`, then open http://localhost:8123 (the game still runs without a key; the coach line just won't appear)
+- **Run locally:** `node server.js`, then open http://localhost:8123 (the game still runs without a key; the coach line just won't appear). Testing shortcut: add `?floor=60` to start at floor 60 (villains from 50, slanted ramps from 100)
 - **Run deterministic tests:** none yet; Build 1 was checked by hand and with in-browser bot play-tests
 - **Run model evals:** none yet (Build 4). Manual check: finish a run and confirm a coach line appears and `coach_received` shows in PostHog
 

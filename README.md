@@ -5,8 +5,8 @@
 - **Builder:** Adam Shlomi (`@nimble-nipple`)
 - **Pod:** [Pod Name / Number]
 - **Product Page & Living PRD:** https://building-with-ai-f26.github.io/as21326--bowl-slop/
-- **Play the prototype:** https://building-with-ai-f26.github.io/as21326--bowl-slop/game.html (or open `docs/game.html` in any browser)
-- **App:** runs locally through Week 4; add a cloud URL in Build 5.
+- **Play the game:** https://building-with-ai-f26.github.io/as21326--bowl-slop/game.html (laptop or phone). The AI coach tip on the game-over screen only appears when you run it locally (below).
+- **App:** runs locally with `node server.js` (Node 20.12+, no dependencies): `cp .env.example .env`, add your Anthropic API key, then open http://localhost:8123. Details in [`AGENTS.md`](./AGENTS.md). The hosted copy is a static GitHub Pages site.
 
 ## Start here: Build 1
 
