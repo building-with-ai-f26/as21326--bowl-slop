@@ -2,8 +2,14 @@
 <html lang="en">
 <head>
 <meta charset="UTF-8" />
-<meta name="viewport" content="width=device-width, initial-scale=1.0" />
-<title>Mount Neverest · Tower Climber Prototype</title>
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover" />
+<meta name="apple-mobile-web-app-capable" content="yes" />
+<meta name="mobile-web-app-capable" content="yes" />
+<meta name="theme-color" content="#0b1020" />
+<title>Mount Neverest</title>
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link href="https://fonts.googleapis.com/css2?family=Press+Start+2P&display=swap" rel="stylesheet" />
   <!-- PostHog analytics. The phc_ project key is public by design: it can only send events, not read data. -->
   <script>
     !function(t,e){var o,n,p,r;e.__SV||(window.posthog=e,e._i=[],e.init=function(i,s,a){function g(t,e){var o=e.split(".");2==o.length&&(t=t[o[0]],e=o[1]),t[e]=function(){t.push([e].concat(Array.prototype.slice.call(arguments,0)))}}(p=t.createElement("script")).type="text/javascript",p.crossOrigin="anonymous",p.async=!0,p.src=s.api_host.replace(".i.posthog.com","-assets.i.posthog.com")+"/static/array.js",(r=t.getElementsByTagName("script")[0]).parentNode.insertBefore(p,r);var u=e;for(void 0!==a?u=e[a]=[]:a="posthog",u.people=u.people||[],u.toString=function(t){var e="posthog";return"posthog"!==a&&(e+="."+a),t||(e+=" (stub)"),e},u.people.toString=function(){return u.toString(1)+".people (stub)"},o="init capture register register_once register_for_session unregister unregister_for_session getFeatureFlag getFeatureFlagPayload isFeatureEnabled reloadFeatureFlags updateEarlyAccessFeatureEnrollment getEarlyAccessFeatures on onFeatureFlags onSessionId getSurveys getActiveMatchingSurveys renderSurvey canRenderSurvey getNextSurveyStep identify setPersonProperties group resetGroups setPersonPropertiesForFlags resetPersonPropertiesForFlags setGroupPropertiesForFlags resetGroupPropertiesForFlags reset get_distinct_id getGroups get_session_id get_session_replay_url alias set_config startSessionRecording stopSessionRecording sessionRecordingStarted captureException loadToolbar get_property getSessionProperty createPersonProfile opt_in_capturing opt_out_capturing has_opted_in_capturing has_opted_out_capturing clear_opt_in_out_capturing debug".split(" "),n=0;n<o.length;n++)g(u,o[n]);e._i.push([i,s,a])},e.__SV=1)}(document,window.posthog||[]);
@@ -13,21 +19,45 @@
     });
   </script>
 <style>
-  html, body { margin: 0; height: 100%; background: #0b1020; }
-  body { display: flex; align-items: center; justify-content: center; font-family: -apple-system, "Segoe UI", sans-serif; }
-  canvas { image-rendering: pixelated; max-height: 100vh; max-width: 100vw; border: 2px solid #2b3a67; }
+  html, body { margin: 0; width: 100%; height: 100%; background: #0b1020; overflow: hidden; overscroll-behavior: none; touch-action: none; }
+  body { position: fixed; inset: 0; height: 100vh; height: 100dvh; display: flex; align-items: center; justify-content: center;
+         font-family: -apple-system, "Segoe UI", sans-serif;
+         -webkit-user-select: none; user-select: none; -webkit-touch-callout: none; -webkit-tap-highlight-color: transparent; }
+  /* The canvas is 480 game units wide and 640+ tall; JS (fit()) picks the height from the screen shape, sizes it in CSS to fit
+     and gives it a backing store at the device pixel ratio so it stays sharp. */
+  canvas { display: block; touch-action: none; -webkit-touch-callout: none; -webkit-user-select: none; user-select: none; outline: none;
+           box-shadow: 0 0 40px rgba(0,0,0,0.5); }
 </style>
 </head>
 <body>
 <canvas id="game" width="480" height="640"></canvas>
+<script src="audio.js"></script>
+<script src="characters.js"></script>
 <script>
 // ---------- Setup ----------
 const canvas = document.getElementById('game');
 const ctx = canvas.getContext('2d');
-const W = canvas.width, H = canvas.height;
+const W = 480, BASE_H = 640;  // internal game width; the height grows on tall (phone) screens so the game fills them
+let H = BASE_H;               // set by fit(): 640 on laptops, up to ~1100 on phones in portrait
+const menuOY = () => (H - BASE_H) / 2;   // menus are laid out for 640 tall; on taller screens they are centred
+let viewScale = 1;           // backing-store pixels per game pixel (set by fit())
 const WALL = 32;              // thickness of the side walls
 const FLOOR_GAP = 90;         // vertical distance between floors
 const STEP = 1 / 60;          // physics runs at a fixed 60 ticks/sec
+const JUMP_BUFFER = 6;         // ticks: a jump pressed this shortly BEFORE landing still fires on landing
+const COYOTE_TICKS = 5;        // ticks: you can still jump this long AFTER running off a ledge
+const MAX_PARTICLES = 300;
+const FONT = '"Press Start 2P", monospace';
+const now = () => performance.now();
+try { document.fonts?.load('10px "Press Start 2P"'); } catch (e) {}
+const UNLOCK_ALL = true;      // everything playable (set false to turn the unlock shop on)
+const START_FLOOR = 0;        // testing shortcut: runs start on this floor (override in the URL with ?floor=N)
+const MOVING_FROM = 20;       // floors from this number up may slide left/right
+const FLOOR_W_SCALE = 1.15;   // regular floors are 15% wider than the original 70..220 design
+const MIN_FLOOR_W = 70 * FLOOR_W_SCALE;
+const SLANT_FROM = 100;       // floors above this number may be tilted (slippery ramps)
+const SLANT_SLIDE = 0.55;     // downhill pull per tick = sin(angle) * this (* 0.25 with grip boots)
+const SLANT_FRICTION = 0.35;  // coasting friction on a slant is only this fraction of the normal friction, so you really slide
 const SPEED_LIMIT = 40;       // safety ceiling only (~4.5x a normal run): without it, wall-to-wall bouncing grows speed to Infinity and crashes the game
 
 // ---------- Parody characters (vector art drawn with canvas shapes) ----------
@@ -62,7 +92,7 @@ function legs(t, air, hipY, drawLeg) {
   drawLeg(23 + swing, hipY, 46 + lift + Math.max(0, Math.sin(t)) * -2);
 }
 
-const CHARACTERS = [
+const PARODY = [
   {
     name: 'Super Marinara',
     bio: "It's-a me, a pasta.",
@@ -201,101 +231,471 @@ const CHARACTERS = [
   },
 ];
 
-function drawSprite(ch, x, y, facing, angle = 0, squash = 1, t = 0, air = false) {
+// Roster: the four parody heroes, with their id / weight / perk merged in
+const CHARACTERS = [
+  ...PARODY.map(c => {
+    const t = PARODY_TRAITS[c.name];
+    return { ...c, id: t.id, stats: { ...c.stats, weight: t.weight }, perk: t.perk };
+  }),
+];
+const perkOf = ch => (ch.perk && ch.perk.id) || 'none';
+
+// Stat bars: each stat is scaled across the whole roster to 1..8 segments (grip is inverted: lower = grippier)
+const STAT_ROWS = [
+  { label: 'SPEED',  get: c => c.stats.accel },
+  { label: 'JUMP',   get: c => c.stats.jump },
+  { label: 'GRIP',   get: c => -c.stats.grip },
+  { label: 'WEIGHT', get: c => c.stats.weight },
+];
+for (const r of STAT_ROWS) {
+  const vals = CHARACTERS.map(r.get);
+  r.min = Math.min(...vals); r.max = Math.max(...vals);
+}
+const statSegments = (r, ch) => r.max === r.min ? 4 : 1 + Math.round((r.get(ch) - r.min) / (r.max - r.min) * 7);
+
+// Call an optional art-style draw function. If it throws midway, undo any ctx.save() it left open
+// (otherwise the canvas state stack is off by one and everything drawn afterwards is garbled).
+function safeArtCall(fn, args) {
+  let depth = 0;
+  const save = ctx.save, restore = ctx.restore;
+  ctx.save = function () { depth++; save.call(this); };
+  ctx.restore = function () { depth--; restore.call(this); };
+  try { fn(...args); return true; }
+  catch (e) { while (depth-- > 0) restore.call(ctx); return false; }
+  finally { ctx.save = save; ctx.restore = restore; }
+}
+
+function drawSprite(ch, x, y, facing, angle = 0, squash = 1, t = 0, air = false, speed = 0) {
   ctx.save();
   ctx.translate(x + PW / 2, y + PH);           // pivot at the feet
   ctx.rotate(angle);
   ctx.scale(facing, squash);
   ctx.translate(-PW / 2, -PH);
   ctx.lineWidth = 1.5; ctx.lineJoin = 'round'; ctx.lineCap = 'round'; ctx.strokeStyle = OUTLINE;
-  ch.draw(t, air);
+  const st = artStyle(), fn = st && st.heroes && st.heroes[ch.id];
+  if (typeof fn === 'function' && !artBroken.has(artKey + ':h:' + ch.id)) {
+    const sm = ctx.imageSmoothingEnabled;
+    if (artPixelish(st)) ctx.imageSmoothingEnabled = false;
+    if (!safeArtCall(fn, [t, air, speed])) artBroken.add(artKey + ':h:' + ch.id);
+    ctx.imageSmoothingEnabled = sm;
+  } else ch.draw(t, air);
   ctx.restore();
 }
 
 // ---------- Input ----------
 const keys = {};
+let jumpBuf = 0;                 // ticks left on a buffered jump press (set by a NEW keydown / tap only)
 addEventListener('keydown', e => {
-  keys[e.code] = true;
   if (['Space', 'ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight'].includes(e.code)) e.preventDefault();
+  const wasHeld = keys[e.code];
+  keys[e.code] = true;
+  // Jumping is edge-triggered: only a fresh press (not OS key-repeat, not a key already held) counts
+  if (!e.repeat && !wasHeld && ['Space', 'ArrowUp', 'KeyW'].includes(e.code)) jumpBuf = JUMP_BUFFER;
+  if (e.code === 'KeyM' && !e.repeat) window.music?.toggleMute();
   onKeyPress(e.code);
 });
 addEventListener('keyup', e => { keys[e.code] = false; });
-// If the window loses focus mid-press, the keyup never arrives, so forget every held key
-addEventListener('blur', () => { for (const k in keys) keys[k] = false; });
-const left = () => keys.ArrowLeft || keys.KeyA;
-const right = () => keys.ArrowRight || keys.KeyD;
-const jumpHeld = () => keys.Space || keys.ArrowUp || keys.KeyW;
+// If the window loses focus mid-press, the keyup never arrives, so forget every held key / finger
+addEventListener('blur', () => { for (const k in keys) keys[k] = false; touches.clear(); recalcTouches(); });
+
+// ---------- Touch, tilt and mouse input ----------
+// Everything goes through Pointer Events (one API for finger, pen and mouse), so a tap can never fire twice.
+// Game-over / menu taps act on pointerdown. A few things need a "real" user gesture (iOS tilt permission, window.open),
+// so those run from touchend / click instead.
+const CTRL_KEY = 'neverest-controls-v2';   // v2: steering changed to 'dip' (roll), so old saved choices are reset
+let isTouch = false;
+try { isTouch = ('ontouchstart' in window) || (window.matchMedia && matchMedia('(pointer: coarse)').matches); } catch (e) {}
+const HAS_TILT_API = typeof window.DeviceOrientationEvent !== 'undefined';
+let controlMode = isTouch && HAS_TILT_API ? 'tilt' : 'touch';   // phones: 'tilt' by default | 'touch' (on-screen zones). Computers use the keyboard either way.
+try { const c = localStorage.getItem(CTRL_KEY); if (c === 'tilt' && HAS_TILT_API || c === 'touch') controlMode = c; } catch (e) {}
+function setControlMode(m, persist) {
+  controlMode = m;
+  if (persist) { try { localStorage.setItem(CTRL_KEY, m); } catch (e) {} }
+  touches.clear(); recalcTouches();
+}
+
+const touches = new Map();       // pointerId -> { role: 'left' | 'right' | 'jump', x }
+let touchLeft = false, touchRight = false, touchJump = false;
+function recalcTouches() {
+  touchLeft = touchRight = touchJump = false;
+  for (const t of touches.values()) { if (t.role === 'left') touchLeft = true; else if (t.role === 'right') touchRight = true; else touchJump = true; }
+}
+
+// Pointer position in game (canvas) coordinates, whatever size the canvas is drawn at
+function toCanvas(e) {
+  const r = canvas.getBoundingClientRect();
+  const w = r.width || W, h = r.height || H;
+  return { x: Math.max(0, Math.min(W, (e.clientX - r.left) * W / w)), y: Math.max(0, Math.min(H, (e.clientY - r.top) * H / h)) };
+}
+const hit = (r, p) => !!r && p.x >= r[0] && p.x <= r[0] + r[2] && p.y >= r[1] && p.y <= r[1] + r[3];
+
+addEventListener('pointerdown', e => {
+  if (e.pointerType === 'touch') isTouch = true;
+  else if (e.pointerType === 'mouse' && e.button !== 0) return;
+  const p = toCanvas(e);
+  if (mode === 'play') { if (e.pointerType !== 'mouse') playTouchDown(e.pointerId, p); }   // on laptops the mouse does nothing mid-run
+  else menuTap(p);
+});
+addEventListener('pointermove', e => {
+  const t = touches.get(e.pointerId);
+  if (t && t.role !== 'jump') { t.role = toCanvas(e).x < W / 2 ? 'left' : 'right'; recalcTouches(); }   // slide a finger across to switch direction
+});
+const pointerEnd = e => { if (touches.delete(e.pointerId)) recalcTouches(); };
+addEventListener('pointerup', pointerEnd);
+addEventListener('pointercancel', pointerEnd);
+addEventListener('touchend', () => { if (tiltState === 'unknown' && controlMode === 'tilt') requestTilt(); });   // iOS asks for motion access only once you pick tilt (needs a touchend/click gesture)
+for (const ev of ['gesturestart', 'gesturechange', 'contextmenu', 'selectstart', 'dragstart']) addEventListener(ev, e => e.preventDefault());
+
+// A finger in play. TILT mode: any touch = jump. TOUCH mode: left third / right third = move while held,
+// middle third = jump, and a second finger anywhere (while one is already steering) = jump.
+function playTouchDown(id, p) {
+  let role = 'jump';
+  if (controlMode === 'touch') {
+    const steering = [...touches.values()].some(t => t.role !== 'jump');
+    if (!steering) role = p.x < W / 3 ? 'left' : p.x > W * 2 / 3 ? 'right' : 'jump';
+  }
+  touches.set(id, { role, x: p.x });
+  if (role === 'jump') jumpBuf = JUMP_BUFFER;      // a NEW press, exactly like a fresh keydown; holding it = jumpHeld (variable jump height)
+  recalcTouches();
+}
+
+// Tilt: gamma/beta from deviceorientation, calibrated to whatever angle the phone is at when the run starts
+let tiltState = !HAS_TILT_API ? 'unavailable' : (typeof DeviceOrientationEvent.requestPermission === 'function' ? 'unknown' : 'granted');
+let tiltSeen = false, tiltNeutral = null, tiltVal = 0, pendingStart = null;
+let startToken = 0;                // bumps on every real start, so old fallback timers know they're stale
+if (tiltState === 'unavailable' && controlMode === 'tilt') controlMode = 'touch';
+const screenAngle = () => { try { return ((screen.orientation && screen.orientation.angle) ?? window.orientation ?? 0) | 0; } catch (e) { return 0; } };
+function onTilt(e) {
+  if (e.gamma == null || e.beta == null) return;   // desktop browsers fire one empty event
+  tiltSeen = true;
+  const a = ((screenAngle() % 360) + 360) % 360;   // landscape swaps which axis is "left/right"
+  // Portrait: steer by "dipping" a side of the phone down (roll), however upright you hold it. gamma alone goes haywire
+  // when the phone is held upright, so use how far the screen's left-right axis points down: asin(sin(gamma) * cos(beta)).
+  const D = Math.PI / 180;
+  const roll = Math.asin(Math.max(-1, Math.min(1, Math.sin(e.gamma * D) * Math.cos(e.beta * D)))) / D;
+  const raw = a === 90 ? e.beta : a === 270 ? -e.beta : a === 180 ? -roll : roll;
+  if (tiltNeutral === null) { tiltNeutral = raw; tiltVal = 0; }
+  tiltVal += (raw - tiltNeutral - tiltVal) * 0.3;   // smoothing: hand jitter no longer twitches the hero
+}
+addEventListener('deviceorientation', onTilt);
+const recalibrateTilt = () => { tiltNeutral = null; tiltVal = 0; };
+try { screen.orientation.addEventListener('change', recalibrateTilt); } catch (e) {}
+addEventListener('orientationchange', recalibrateTilt);
+
+function requestTilt() {                           // call from inside a user gesture
+  if (tiltState !== 'unknown') return;
+  tiltState = 'pending';
+  const done = ok => {
+    tiltState = ok ? 'granted' : 'denied';
+    if (!ok) { setControlMode('touch', false); flash('TILT BLOCKED: TOUCH CONTROLS'); }
+    if (pendingStart) { const f = pendingStart; pendingStart = null; f(); }
+  };
+  try { DeviceOrientationEvent.requestPermission().then(s => done(s === 'granted'), () => done(false)); } catch (e) { done(false); }
+}
+// The tilt direction as -1..1 (analog: 6 degrees of deadzone, then a gentle curve up to full speed at 30 degrees)
+function tiltAxis() {
+  if (controlMode !== 'tilt' || !isTouch || tiltState !== 'granted') return 0;
+  const a = Math.abs(tiltVal);
+  if (a <= 6) return 0;
+  const k = Math.min(1, (a - 6) / 24);
+  return Math.sign(tiltVal) * (0.15 + 0.85 * k * k);
+}
+function toggleControls() {
+  const m = controlMode === 'tilt' ? 'touch' : (HAS_TILT_API ? 'tilt' : 'touch');
+  setControlMode(m, true);
+  if (m === 'tilt' && tiltState === 'denied') tiltState = 'unknown';   // retried by the touchend of this same tap
+  window.sfx?.('select');
+}
+const flash = msg => { message = msg; messageTimer = 120; };
+
+const left = () => keys.ArrowLeft || keys.KeyA || touchLeft || tiltAxis() < 0;
+const right = () => keys.ArrowRight || keys.KeyD || touchRight || tiltAxis() > 0;
+const leftAmt = () => (keys.ArrowLeft || keys.KeyA || touchLeft) ? 1 : Math.max(0, -tiltAxis());      // 0..1 push strength
+const rightAmt = () => (keys.ArrowRight || keys.KeyD || touchRight) ? 1 : Math.max(0, tiltAxis());
+const jumpHeld = () => keys.Space || keys.ArrowUp || keys.KeyW || touchJump;
 
 // ---------- Game state ----------
-let mode = 'select';             // 'select' | 'play' | 'over'
+let mode = 'select';             // 'select' | 'play' | 'over'  
+let overAt = 0;                  // when the run ended (ms): ignores accidental taps right after a death, times the end-card fade
 let selected = 0;
 let player, floors, camY, scrollSpeed, elapsed, score, bestFloor, combo, comboTimer, lastFloor, message, messageTimer;
+let kickChain = 0, fire = false, fireGlow = 0, fireMsgTimer = 0, shake = 0, musicTick = 0;
+let pickups = [], powerT = { spring: 0, grip: 0 };   // floating powerups {type,f,phase}; remaining ticks per active powerup
+let particles = [];              // {x,y,vx,vy,life,max,color,size,type[,text]} in world space; types: dust|spark|flame|confetti|text
 let highScore = 0;
 try { highScore = Number(localStorage.getItem('slipup-high')) || 0; } catch (e) {}
+
+const QS = (() => { try { return new URLSearchParams(location.search); } catch (e) { return new URLSearchParams(''); } })();   // ?floor=48 starts higher (testing)
+// ---------- Art styles: 'classic' (the built-in drawings) + whatever art-*.js registered in window.ART_STYLES ----------
+// ART_STYLES[key] = { label, heroes: {id: draw(t, air, speed)}, villains: {id: draw(t, firing)} }. A missing art file just means fewer styles.
+const ART_KEY = 'neverest-art-v2';     // v2: so a style picked while testing doesn't override the new default
+const ART_ORDER = [];
+const DEFAULT_ART = 'classic';
+
+const artBroken = new Set();     // style:character combos whose draw threw once: they fall back to classic from then on
+const artRegistry = () => (window.ART_STYLES && typeof window.ART_STYLES === 'object') ? window.ART_STYLES : {};
+function artKeys() {
+  const reg = artRegistry(), ks = Object.keys(reg).filter(k => k !== 'classic' && reg[k] && typeof reg[k] === 'object');
+  return ['classic', ...ART_ORDER.filter(k => ks.includes(k)), ...ks.filter(k => !ART_ORDER.includes(k))];
+}
+let artKey = artKeys().includes(DEFAULT_ART) ? DEFAULT_ART : 'classic';
+try {
+  const fromUrl = QS.get('art');
+  let fromStore = null; try { fromStore = localStorage.getItem(ART_KEY); } catch (e) {}
+  if (fromUrl && artKeys().includes(fromUrl)) artKey = fromUrl;
+  else if (fromStore && artKeys().includes(fromStore)) artKey = fromStore;
+} catch (e) {}
+const artStyle = () => (artKey === 'classic' ? null : artRegistry()[artKey] || null);
+const artPixelish = st => artKey === 'pixel' || artKey === 'codex' || /PIXEL/i.test(String((st && st.label) || ''));
+const artLabel = () => { const st = artStyle(); return String((st && st.label) || artKey).toUpperCase(); };
+function cycleArt(dir = 1) {
+  const ks = artKeys(), i = Math.max(0, ks.indexOf(artKey));
+  artKey = ks[(i + ks.length + dir) % ks.length];
+  try { localStorage.setItem(ART_KEY, artKey); } catch (e) {}
+  window.sfx?.('select');
+}
+// Villain drawn in the current style (same transform as drawVillain in characters-ip.js), else the classic one
+function drawVillainArt(id, x, y, facing, t, firing) {
+  const st = artStyle(), fn = st && st.villains && st.villains[id];
+  if (typeof fn === 'function' && !artBroken.has(artKey + ':v:' + id)) {
+    ctx.save();
+    ctx.translate(x, y); ctx.scale(facing, 1); ctx.translate(-24, -24);
+    ctx.lineWidth = 1.5; ctx.lineJoin = 'round'; ctx.lineCap = 'round'; ctx.strokeStyle = OUTLINE;
+    const sm = ctx.imageSmoothingEnabled;
+    if (artPixelish(st)) ctx.imageSmoothingEnabled = false;
+    if (!safeArtCall(fn, [t, Math.max(0, Math.min(1, firing || 0))])) artBroken.add(artKey + ':v:' + id);
+    ctx.imageSmoothingEnabled = sm;
+    ctx.restore();
+  } else drawVillain(id, x, y, facing, t, firing);
+}
+
+
+// ---------- Wallet and unlocks (banked points buy characters; OFF while UNLOCK_ALL is true) ----------
+const PRICES = [0, 0, 500, 1000, 1500, 2500, 3500, 5000, 6500, 8000, 10000, 12000];   // same order as CHARACTERS
+let wallet = 0, lastGain = 0, unlockOverride = null, needFlash = 0, needPrice = 0;
+let unlocked = CHARACTERS.filter((c, i) => PRICES[i] === 0).map(c => c.id);
+try {
+  wallet = Number(localStorage.getItem('neverest-wallet')) || 0;
+  const saved = JSON.parse(localStorage.getItem('neverest-unlocked'));
+  if (Array.isArray(saved)) unlocked = [...new Set([...unlocked, ...saved])];
+} catch (e) {}
+const saveWallet = () => { try { localStorage.setItem('neverest-wallet', String(wallet)); } catch (e) {} };
+const saveUnlocked = () => { try { localStorage.setItem('neverest-unlocked', JSON.stringify(unlocked)); } catch (e) {} };
+const unlockAll = () => (unlockOverride === null ? UNLOCK_ALL : unlockOverride);   // U key flips unlockOverride for this session
+const isUnlocked = i => unlockAll() || unlocked.includes(CHARACTERS[i].id);
+
+// Start a run. On iOS the first tilt run waits for the motion-permission prompt (shown from the touchend of this same tap).
+function startRun() {
+  if (tiltState === 'pending' || (tiltState === 'unknown' && isTouch && controlMode === 'tilt')) {
+    pendingStart = startGame;
+    // Safety net: if no tap ever shows the prompt (e.g. an iPad started with a keyboard), don't hang:
+    // after 3 seconds switch to touch controls and start anyway. The token + checks make sure a stale
+    // timer never starts a run you didn't ask for (another start happened, you changed character,
+    // left the screen, or a real permission prompt is open and waiting for you).
+    const tok = ++startToken, who = selected, from = mode;
+    setTimeout(() => {
+      if (tok !== startToken || pendingStart !== startGame || selected !== who || mode !== from || tiltState !== 'unknown') return;
+      pendingStart = null;
+      tiltState = 'denied'; setControlMode('touch', false);
+      startGame();
+    }, 3000);
+    return;
+  }
+  startGame();
+}
+
+function tryStartOrBuy() {                       // ENTER on the select screen
+  if (isUnlocked(selected)) { startRun(); return; }
+  const price = PRICES[selected];
+  if (wallet >= price) {
+    wallet -= price; unlocked.push(CHARACTERS[selected].id); saveWallet(); saveUnlocked();
+    window.sfx?.('combo');
+  } else {
+    needFlash = 40; needPrice = price - wallet; window.sfx?.('warn');
+  }
+}
+
+// Linear blend a->b as n goes from n0 to n1 (clamped), used for all the "gets harder with height" numbers
+function ramp(n, n0, n1, a, b) { return a + (b - a) * Math.max(0, Math.min(1, (n - n0) / (n1 - n0))); }
+
+function addFloor(n) { const f = makeFloor(n); floors.push(f); maybePickup(f); return f; }
 
 function makeFloor(n) {
   const y = -n * FLOOR_GAP;
   if (n === 0 || n % 50 === 0) return { n, y, x: WALL, w: W - 2 * WALL };   // full-width checkpoint floors
-  const maxW = Math.max(70, 220 - n * 1.2);   // floors get narrower as you climb
-  const w = 70 + Math.random() * (maxW - 70);
+  const maxW = Math.max(MIN_FLOOR_W, (220 - n * 1.2) * FLOOR_W_SCALE);   // floors get narrower as you climb (all widths x1.15 to be friendlier)
+  const w = Math.min(W - 2 * WALL, MIN_FLOOR_W + Math.random() * (maxW - MIN_FLOOR_W));
   const x = WALL + Math.random() * (W - 2 * WALL - w);
-  return { n, y, x, w };
+  const f = { n, y, x, w };
+  if (n > SLANT_FROM && Math.random() < ramp(n, SLANT_FROM, 250, 0.20, 0.55)) {   // slanted ramp: never also moving
+    f.slant = (Math.random() < 0.5 ? -1 : 1) * ramp(n, SLANT_FROM, 250, 6, 16) * Math.PI / 180;
+  } else if (n >= MOVING_FROM && Math.random() < ramp(n, MOVING_FROM, 120, 0.25, 0.6)) makeMoving(f);
+  return f;
+}
+
+// Height of a floor's walking surface at world x (flat floors: just f.y; slanted: tilted about the floor's centre)
+const surfaceY = (f, x) => (f.slant ? f.y + (x - (f.x + f.w / 2)) * Math.tan(f.slant) : f.y);
+
+// Turn a floor into a horizontal slider. x = baseX + sin(phase) * range, so it never leaves the walls.
+function makeMoving(f) {
+  const avail = W - 2 * WALL - f.w;                       // free space left and right of the floor
+  const range = Math.min(40 + Math.random() * 70, avail / 2);
+  f.moving = true;
+  f.range = range;
+  f.baseX = WALL + range + Math.random() * (avail - 2 * range);
+  f.speed = ramp(f.n, MOVING_FROM, 160, 0.6, 2.2);        // peak speed in px per tick
+  f.phase = Math.random() * Math.PI * 2;
+  f.dx = 0;                                               // how far it moved this tick (riders get carried by it)
+  f.x = f.baseX + Math.sin(f.phase) * range;
+}
+
+// Advance every moving floor one tick and remember the movement
+function updateMovingFloors() {
+  for (const f of floors) {
+    if (!f.moving) continue;
+    f.phase += f.speed / f.range;                         // angular speed chosen so peak linear speed = f.speed
+    const nx = f.baseX + Math.sin(f.phase) * f.range;
+    f.dx = nx - f.x; f.x = nx;
+  }
+}
+
+// ?floor=N in the URL (else START_FLOOR): validated, clamped to a sane range
+function getStartFloor() {
+  let n = START_FLOOR;
+  try {
+    const v = new URLSearchParams(location.search).get('floor');
+    if (v !== null && /^\d+$/.test(v)) n = parseInt(v, 10);
+  } catch (e) {}
+  return Number.isFinite(n) ? Math.max(0, Math.min(5000, Math.floor(n))) : 0;
 }
 
 function startGame() {
+  startToken++;
   const ch = CHARACTERS[selected];
-  player = { ch, x: W / 2 - PW / 2, y: -PH, vx: 0, vy: 0, onGround: true, facing: 1, angle: 0, squash: 1, floor: 0, anim: 0, wallKick: 0 };
-  floors = [];
-  for (let n = 0; n < 12; n++) floors.push(makeFloor(n));
-  camY = -H + 60;               // camera top edge, in world coordinates (up is negative y)
+  const startN = getStartFloor();
+  player = { ch, x: W / 2 - PW / 2, y: -PH, vx: 0, vy: 0, onGround: true, facing: 1, angle: 0, squash: 1, floor: 0, anim: 0, wallKick: 0, coyote: 0, airJumps: 0, flaps: 0, on: null };   // on = the floor object we stand on (null in the air)
+  floors = []; pickups = []; powerT = { spring: 0, grip: 0 };
+  for (let n = Math.max(0, startN - 3); n < Math.max(12, startN + 12); n++) addFloor(n);
+  // Teleport to the start floor (floor 0 by default): stand centered on it, no points for skipped floors
+  const home = floors.find(f => f.n === startN);
+  player.x = home.x + home.w / 2 - PW / 2; player.y = home.y - PH; player.floor = startN; player.on = home;
+  camY = player.y - (H - 60 - PH);   // camera top edge, in world coordinates (up is negative y)
   scrollSpeed = 0;
-  elapsed = 0; score = 0; bestFloor = 0; combo = 0; comboTimer = 0; lastFloor = 0;
+  elapsed = 0; score = 0; bestFloor = startN; combo = 0; comboTimer = 0; lastFloor = startN;
+  resetEnemy();
   message = ''; messageTimer = 0;
-  coachLine = '';
+  kickChain = 0; fire = false; fireGlow = 0; fireMsgTimer = 0; shake = 0; musicTick = 0; jumpBuf = 0;
+  particles = [];
+  touches.clear(); recalcTouches(); tiltNeutral = null; tiltVal = 0;   // tilt is calibrated to the phone's angle at the start of every run
   mode = 'play';
-  track('run_started', { character: ch.name });
+  coachLine = '';
+  track('run_started', { character: player.ch.name });
+  window.sfx?.('start');
+  window.music?.start(player.ch.id || player.ch.name);
+}
+
+// ---------- Menu taps (finger or mouse). Hit boxes live here so the drawing code and the tap code share them. ----------
+const R = {
+  prev: [0, 84, 150, 130], next: [330, 84, 150, 130],       // left / right of the big sprite = previous / next hero
+  name: [150, 84, 180, 190],                                 // sprite centre + name / bio / perk = start
+  start: [100, 506, 280, 54], ctrl: [60, 562, 360, 52], ctrlFull: [60, 562, 360, 52],
+  change: [90, 398, 300, 48],
+};
+const thumbRect = i => [60 + (i % 6) * 60, 377 + Math.floor(i / 6) * 62, 60, 62];
+const stepSelected = d => { selected = (selected + CHARACTERS.length + d) % CHARACTERS.length; window.sfx?.('select'); };
+
+function menuTap(p) {
+  p = { x: p.x, y: p.y - menuOY() };                         // hit boxes are in the 640-tall menu layout
+  if (mode === 'select') {
+    if (isTouch && hit(R.ctrl, p)) { toggleControls(); return; }
+    if (hit(R.prev, p)) { stepSelected(-1); return; }
+    if (hit(R.next, p)) { stepSelected(1); return; }
+    if (hit(R.name, p) || hit(R.start, p)) { tryStartOrBuy(); return; }
+    for (let i = 0; i < CHARACTERS.length; i++) {
+      if (!hit(thumbRect(i), p)) continue;
+      if (i === selected) tryStartOrBuy(); else { selected = i; window.sfx?.('select'); }
+      return;
+    }
+    startRun();
+  } else if (mode === 'over') {
+    if (now() - overAt < 500) return;                        // don't let a frantic jump-tap at death restart the run
+    if (hit(R.change, p)) { mode = 'select'; window.music?.start('menu'); return; }
+    startRun();
+  }
 }
 
 function onKeyPress(code) {
   if (mode === 'select') {
-    if (code === 'ArrowLeft' || code === 'KeyA') selected = (selected + CHARACTERS.length - 1) % CHARACTERS.length;
-    if (code === 'ArrowRight' || code === 'KeyD') selected = (selected + 1) % CHARACTERS.length;
-    if (code === 'Enter' || code === 'Space') startGame();
+    if (code === 'ArrowLeft' || code === 'KeyA') { selected = (selected + CHARACTERS.length - 1) % CHARACTERS.length; window.sfx?.('select'); }
+    if (code === 'ArrowRight' || code === 'KeyD') { selected = (selected + 1) % CHARACTERS.length; window.sfx?.('select'); }
+    if (code === 'Enter' || code === 'Space') tryStartOrBuy();
+    if (code === 'KeyU') unlockOverride = !unlockAll();   // secret: flip the unlock shop on/off for this session
   } else if (mode === 'over') {
-    if (code === 'KeyR' || code === 'Enter') startGame();
-    if (code === 'KeyC') mode = 'select';
+    if (code === 'KeyR' || code === 'Enter') startRun();
+    if (code === 'KeyC') { mode = 'select'; window.music?.start('menu'); }
   }
 }
 
 // ---------- Physics (one fixed 1/60s tick) ----------
 function update() {
   const p = player, s = p.ch.stats;
+  const weight = s.weight || 1;                 // optional stat: heavier = stops faster, falls a bit faster
+  const grounded0 = p.onGround, prevOn = p.on;                 // standing at the start of this tick? (tells a fresh landing from standing still)
   elapsed += STEP;
+  if (controlMode === 'tilt' && isTouch && tiltState === 'granted' && !tiltSeen && elapsed > 1.5) {   // phone with no motion sensor / events blocked
+    setControlMode('touch', false); flash('NO TILT SENSOR: TOUCH CONTROLS');
+  }
+  updateMovingFloors();
+  if (grounded0 && p.on) p.x += p.on.dx || 0;   // ride the moving floor we were standing on
 
   // Ice: holding a direction speeds you up; letting go you keep sliding (grip close to 1 = slippery)
-  const accel = p.onGround ? s.accel : s.accel * 0.6;
-  if (left()) { p.vx -= accel; p.facing = -1; }
-  if (right()) { p.vx += accel; p.facing = 1; }
-  if (!left() && !right() && p.onGround) p.vx *= s.grip;
+  // but a little stickier than before: extra decay when coasting, extra brake when reversing
+  const perk = perkOf(p.ch);
+  const limit = perk === 'speed' ? 46 : SPEED_LIMIT;          // speed perk: higher top speed
+  const groundAccel = perk === 'speed' ? s.accel * 1.1 : s.accel;  // ...and +10% ground accel
+  const accel = p.onGround ? groundAccel : s.accel * 0.6;
+  const lAmt = leftAmt(), rAmt = rightAmt();     // 0 or 1 for keys / touch; 0..1 for tilt
+  const gripOn = powerT.grip > 0, springOn = powerT.spring > 0;
+  const slope = (p.onGround && prevOn && prevOn.slant) || 0;      // tilt of the floor we are standing on (radians, 0 = flat)
+  if (p.onGround && ((lAmt > 0 && p.vx > 0) || (rAmt > 0 && p.vx < 0))) p.vx *= Math.max(gripOn ? 0.65 : 0.8, (gripOn ? 0.78 : 0.92) - 0.03 * (weight - 1));
+  if (lAmt > 0) { p.vx -= accel * lAmt; p.facing = -1; }
+  if (rAmt > 0) { p.vx += accel * rAmt; p.facing = 1; }
+  if (slope) p.vx += Math.sin(slope) * SLANT_SLIDE * (gripOn ? 0.25 : 1);   // gravity pulls you down the ramp
+  if (lAmt === 0 && rAmt === 0 && p.onGround) {
+    let decay = gripOn ? 0.85 : s.grip - 0.025 - 0.02 * (weight - 1);
+    if (slope) decay = 1 - (1 - decay) * SLANT_FRICTION;            // ice on a slope: much weaker friction
+    p.vx *= decay;
+  }
   // No normal top speed: the longer you run, the faster you go. The main brake is a little
   // drag (lose 1% of your speed every tick), so speed builds up gradually.
   p.vx *= 0.99;
-  p.vx = Math.max(-SPEED_LIMIT, Math.min(SPEED_LIMIT, p.vx));
+  p.vx = Math.max(-limit, Math.min(limit, p.vx));
   if (p.onGround) p.anim += Math.abs(p.vx) * 0.12;
 
   // The faster you're running, the higher you jump — the core trick of the genre.
   // Jump within a split second of bouncing off a wall for a bonus "wall kick" super jump.
-  if (jumpHeld() && p.onGround) {
-    const kick = p.wallKick > 0 ? 3 : 0;
-    p.vy = -(s.jump + Math.abs(p.vx) * 0.9 + kick);
-    p.onGround = false;
+  // Jumps need a fresh press (jumpBuf), and are forgiving: a press just before landing is buffered,
+  // and you can still jump for a few ticks after leaving a ledge (coyote time).
+  if (p.onGround) p.coyote = COYOTE_TICKS; else if (p.coyote > 0) p.coyote--;
+  if (jumpBuf > 0 && p.coyote > 0) {
+    const kick = p.wallKick > 0;
+    p.vy = -(s.jump + Math.abs(p.vx) * 0.9 + (kick ? 3 : 0)) * (springOn ? 1.3 : 1);
+    p.onGround = false; p.coyote = 0; jumpBuf = 0;
     p.squash = 1.3;
-    if (kick) { message = 'WALL KICK!'; messageTimer = 45; }
+    if (kick) wallKickJump(); else window.sfx?.('jump');
+  } else if (jumpBuf > 0 && !p.onGround && !(perk === 'airjump' && p.vy > 0 && floorJustBelow(p, 24))) {
+    airPerkJump(p, perk, s);                    // no ground jump available: airjump / flutter perks may use the press
+    // (an airjump press made just before landing is NOT spent mid-air: it stays buffered and becomes the ground jump)
   }
+  if (jumpBuf > 0) jumpBuf--;
   if (p.wallKick > 0) p.wallKick--;
 
-  p.vy += 0.55;                                 // gravity
+  let grav = 0.55 * (0.9 + 0.1 * weight);       // gravity (mildly heavier for heavy characters)
+  if (perk === 'float' && !p.onGround && jumpHeld() && Math.abs(p.vy) < 2.5) grav *= 0.35;   // float: hang time near the top
+  p.vy += grav;
+  if (perk === 'glide' && p.vy > 6 && jumpHeld()) p.vy = 6;   // glide: cape/umbrella caps the fall speed
   if (!jumpHeld() && p.vy < -4) p.vy += 0.4;    // let go early for a shorter hop
+  const prevCx = p.x + PW / 2;                  // where we were, for landing on ramps (their height changes along x)
   p.x += p.vx;
   const prevBottom = p.y + PH;
   p.y += p.vy;
@@ -306,21 +706,35 @@ function update() {
     p.x = p.x < WALL ? WALL : W - WALL - PW;
     if (Math.abs(p.vx) > 4) {
       p.vx = -Math.sign(p.vx) * Math.min(Math.abs(p.vx) * 1.15, SPEED_LIMIT);
-      p.wallKick = 12;                          // 12 ticks = 0.2 seconds to press jump
+      p.wallKick = perk === 'kickwindow' ? 20 : 12;   // normally 12 ticks = 0.2 seconds to press jump
+      shake = Math.max(shake, 2);
+      for (let i = 0; i < 5; i++) spawn(p.x < W / 2 ? WALL : W - WALL, p.y + PH / 2, -Math.sign(p.vx) * (1 + Math.random() * 3), (Math.random() - 0.7) * 3, 14 + Math.random() * 8, '#fde047', 2, 'spark');
       if (!p.onGround && p.vy < 0) p.vy -= 2;   // wall kick: slide up the wall
       p.facing = Math.sign(p.vx);
     } else p.vx = 0;
   }
 
   // Landing: floors are one-way (you pass through from below, land from above)
-  p.onGround = false;
+  p.onGround = false; p.on = null;
+  const pcx = p.x + PW / 2;
+  const onSpan = f => pcx >= f.x && pcx <= f.x + f.w;            // slanted floors use the player's centre (no 8px edge grace)
   if (p.vy >= 0) {
-    for (const f of floors) {
+    if (grounded0 && prevOn && prevOn.slant && onSpan(prevOn)) {   // standing on a ramp: glue to the surface as we move; off the end = fall
+      p.y = surfaceY(prevOn, pcx) - PH; p.vy = 0; p.onGround = true; p.on = prevOn; p.angle = prevOn.slant; p.squash = 0.8;
+      p.airJumps = 0; p.flaps = 0;
+      landOn(prevOn.n, false);
+    } else for (const f of floors) {
       const bottom = p.y + PH;
-      const overlaps = p.x + PW - 8 > f.x && p.x + 8 < f.x + f.w;
-      if (overlaps && prevBottom <= f.y && bottom >= f.y) {
-        p.y = f.y - PH; p.vy = 0; p.onGround = true; p.angle = 0; p.squash = 0.8;
-        landOn(f.n);
+      const overlaps = f.slant ? onSpan(f) : (p.x + PW - 8 > f.x && p.x + 8 < f.x + f.w);
+      const sy = surfaceY(f, pcx), prevSy = surfaceY(f, Math.max(f.x, Math.min(f.x + f.w, prevCx)));   // clamp: never read the ramp's height past its ends
+      if (overlaps && prevBottom <= prevSy && bottom >= sy) {   // was above the surface (where we were), now at/below it (where we are)
+        const impact = p.vy;
+        p.y = sy - PH; p.vy = 0; p.onGround = true; p.on = f; p.angle = f.slant || 0; p.squash = 0.8;
+        p.airJumps = 0; p.flaps = 0;            // airjump / flutter refill on every landing
+        if (!grounded0) landFx(sy, impact);
+        landOn(f.n, !grounded0);
+        // bounce perk: a hard fresh landing (impact > 9) pops you up a little. The hop lands softer, so it can't loop.
+        if (perk === 'bounce' && !grounded0 && impact > 9) { p.vy = -impact * 0.45; p.onGround = false; p.coyote = COYOTE_TICKS; }
         break;
       }
     }
@@ -328,10 +742,11 @@ function update() {
 
   // Spin during big jumps, just for style
   if (!p.onGround && p.vy < -15) p.angle += 0.25 * p.facing;
+  else if (!p.onGround && Math.abs(p.angle) < 0.35) p.angle *= 0.8;   // leaving a ramp: ease the tilt back to upright
   p.squash += (1 - p.squash) * 0.2;
 
   // Spawn floors above, drop ones far below
-  while (floors[floors.length - 1].y > camY - FLOOR_GAP * 2) floors.push(makeFloor(floors[floors.length - 1].n + 1));
+  while (floors[floors.length - 1].y > camY - FLOOR_GAP * 2) addFloor(floors[floors.length - 1].n + 1);
   floors = floors.filter(f => f.y < camY + H + FLOOR_GAP);
 
   // The tower "comes down": camera starts creeping up after 5s and speeds up over time
@@ -340,39 +755,360 @@ function update() {
   const pushLine = camY + H * 0.3;              // climbing fast pulls the camera up with you
   if (p.y < pushLine) camY -= (pushLine - p.y) * 0.15;
 
+  updatePickups();
   if (comboTimer > 0 && --comboTimer === 0) endCombo();
   if (messageTimer > 0) messageTimer--;
+  if (fireMsgTimer > 0) fireMsgTimer--;
+
+  updateFire();
+  updateEnemy();
+  if (hitFlash > 0) hitFlash--;
+  if (fire) {                                   // flame trail + sparkles while on fire
+    const cx = p.x + PW / 2, cy = p.y + PH * 0.6;
+    for (let i = 0; i < 2; i++) spawn(cx + (Math.random() - 0.5) * 14, cy + (Math.random() - 0.5) * 20, -p.vx * 0.15 + (Math.random() - 0.5), -0.5 - Math.random() * 1.2, 18 + Math.random() * 14, ['#ef4444', '#fb923c', '#fde047'][i + (Math.random() < 0.4 ? 1 : 0)] , 4 + Math.random() * 3, 'flame');
+    if (Math.random() < 0.3) spawn(cx + (Math.random() - 0.5) * 40, cy + (Math.random() - 0.5) * 50, (Math.random() - 0.5) * 2, -1 - Math.random(), 20, Math.random() < 0.5 ? '#fff' : '#fde047', 2, 'spark');
+  }
+  fireGlow += ((fire ? 1 : 0) - fireGlow) * 0.05;
+  shake *= 0.85;
+  updateParticles();
+  if (++musicTick % 30 === 0) window.music?.setIntensity(Math.max(0, Math.min(1, scrollSpeed / 5 + (fire ? 0.3 : 0))));
 
   if (p.y > camY + H) gameOver();
 }
 
-function landOn(n) {
+// Is there a floor we are about to land on, within `dist` px under the feet? (same sideways overlap test as landing)
+function floorJustBelow(p, dist) {
+  const feet = p.y + PH;
+  const cx = p.x + PW / 2;
+  return floors.some(f => (f.slant ? cx >= f.x && cx <= f.x + f.w : p.x + PW - 8 > f.x && p.x + 8 < f.x + f.w) && surfaceY(f, cx) >= feet - 1 && surfaceY(f, cx) - feet <= dist);
+}
+
+// Air perks: a NEW jump press while airborne (and past coyote time)
+function airPerkJump(p, perk, s) {
+  if (perk === 'airjump' && p.airJumps < 1) {    // one extra full-ish jump per airtime
+    p.airJumps++; p.vy = -(s.jump * 0.85); jumpBuf = 0;
+    for (let i = 0; i < 10; i++) spawn(p.x + PW / 2, p.y + PH, (Math.random() - 0.5) * 4, Math.random() * 1.5, 18 + Math.random() * 8, '#fff', 3 + Math.random() * 2, 'dust');
+    window.sfx?.('jump');
+  } else if (perk === 'flutter' && p.flaps < 3) {  // up to 3 small flaps per airtime
+    p.flaps++; p.vy = Math.min(p.vy, -4); jumpBuf = 0;
+    window.sfx?.('jump');
+  }
+}
+
+// ---------- Powerups: floating badges (from floor 5, ~1 in 9 floors, max 3 alive) ----------
+const POWER = {
+  spring: { label: 'JUMP BOOST!', secs: 10, color: '#22c55e' },     // jump velocity x1.3
+  grip:   { label: 'GRIP BOOTS!', secs: 12, color: '#f97316' },     // much less slippery (coast decay 0.85, slant slide x0.25, harder braking)
+};
+function maybePickup(f) {
+  if (f.n < 5 || pickups.length >= 3 || Math.random() >= 1 / 9) return;
+  pickups.push({ type: Math.random() < 0.5 ? 'spring' : 'grip', f, phase: Math.random() * 6.28 });
+}
+const pickupPos = k => { const x = k.f.x + k.f.w / 2; return { x, y: surfaceY(k.f, x) - 26 }; };   // rides moving floors, sits above a slope
+function updatePickups() {
+  const p = player;
+  for (const t in powerT) if (powerT[t] > 0) powerT[t]--;
+  pickups = pickups.filter(k => {
+    const q = pickupPos(k);
+    if (q.y - camY > H + 40) return false;                       // scrolled off the bottom
+    if (Math.abs(q.x - (p.x + PW / 2)) < PW / 2 + 11 && Math.abs(q.y - (p.y + PH / 2)) < PH / 2 + 11) { collectPickup(k, q); return false; }
+    return true;
+  });
+}
+function collectPickup(k, q) {
+  const def = POWER[k.type];
+  powerT[k.type] = def.secs * 60;                                // same type = timer refresh; the other type keeps running
+  for (let i = 0; i < 18; i++) spawn(q.x, q.y, (Math.random() - 0.5) * 6, (Math.random() - 0.5) * 6 - 1, 20 + Math.random() * 14, i % 3 ? def.color : '#fff', 2 + Math.random() * 2.5, 'spark');
+  spawn(q.x, q.y - 22, 0, -0.8, 55, def.color, 9, 'text', def.label);
+  addScore(20, q.x, q.y - 6);
+  window.sfx?.('combo');
+}
+function drawPowerIcon(type, cx, cy, r) {                        // round badge icon; r = radius in px
+  ctx.save(); ctx.translate(cx, cy); ctx.scale(r / 10, r / 10);
+  ctx.lineJoin = 'round'; ctx.lineCap = 'round';
+  ctx.beginPath(); ctx.arc(0, 0, 10, 0, Math.PI * 2); ctx.fillStyle = type === 'spring' ? '#16a34a' : '#ea580c'; ctx.fill();
+  ctx.lineWidth = 1.5; ctx.strokeStyle = '#fff'; ctx.stroke();
+  if (type === 'spring') {                                       // coiled spring with an up arrow
+    ctx.strokeStyle = '#ecfccb'; ctx.lineWidth = 1.8; ctx.beginPath();
+    ctx.moveTo(-4, 6); ctx.lineTo(4, 4); ctx.lineTo(-4, 2); ctx.lineTo(4, 0); ctx.lineTo(-4, -2); ctx.stroke();
+    ctx.fillStyle = '#fff'; ctx.beginPath(); ctx.moveTo(0, -8); ctx.lineTo(-4, -3); ctx.lineTo(4, -3); ctx.closePath(); ctx.fill();
+  } else {                                                       // spiked boot
+    ctx.fillStyle = '#fff7ed'; ctx.beginPath();
+    ctx.moveTo(-3, -7); ctx.lineTo(2, -7); ctx.lineTo(2, 0); ctx.lineTo(7, 2); ctx.lineTo(7, 5); ctx.lineTo(-4, 5); ctx.closePath(); ctx.fill();
+    ctx.fillStyle = '#431407';
+    for (const sx of [-2.5, 0.5, 3.5]) { ctx.beginPath(); ctx.moveTo(sx - 1.4, 5); ctx.lineTo(sx + 1.4, 5); ctx.lineTo(sx, 8.5); ctx.closePath(); ctx.fill(); }
+  }
+  ctx.restore();
+}
+function drawPickups() {
+  for (const k of pickups) {
+    const q = pickupPos(k), y = q.y - camY;
+    if (y < -30 || y > H + 30) continue;
+    const bob = Math.sin(elapsed * 4 + k.phase) * 3, pulse = 0.5 + 0.5 * Math.sin(elapsed * 6 + k.phase), col = POWER[k.type].color;
+    const g = ctx.createRadialGradient(q.x, y + bob, 2, q.x, y + bob, 22 + pulse * 5);
+    g.addColorStop(0, col + 'cc'); g.addColorStop(1, col + '00');
+    ctx.fillStyle = g; ctx.beginPath(); ctx.arc(q.x, y + bob, 22 + pulse * 5, 0, Math.PI * 2); ctx.fill();
+    drawPowerIcon(k.type, q.x, y + bob, 12);
+  }
+}
+function drawAura() {                                            // soft coloured glow around the player while a powerup is active
+  const p = player, cx = p.x + PW / 2, cy = p.y - camY + PH / 2, a = 0.5 + 0.2 * Math.sin(elapsed * 8);
+  [['spring', '#22c55e', 34], ['grip', '#f97316', 40]].forEach(([t, col, r]) => {
+    if (!(powerT[t] > 0)) return;
+    const g = ctx.createRadialGradient(cx, cy, 8, cx, cy, r);
+    g.addColorStop(0, col + '00'); g.addColorStop(0.7, col + '44'); g.addColorStop(1, col + '00');
+    ctx.globalAlpha = a + 0.3; ctx.fillStyle = g; ctx.beginPath(); ctx.arc(cx, cy, r, 0, Math.PI * 2); ctx.fill(); ctx.globalAlpha = 1;
+  });
+}
+function drawPowerHUD() {                                        // icon + shrinking bar under the score; blinks in the last 2s
+  let row = 0;
+  for (const t of ['spring', 'grip']) {
+    const left = powerT[t];
+    if (!(left > 0)) continue;
+    const y = 46 + row++ * 22;
+    if (left < 120 && Math.floor(left / 6) % 2) continue;
+    const def = POWER[t];
+    drawPowerIcon(t, W - WALL - 8 - 84 - 10, y + 6, 9);
+    ctx.fillStyle = 'rgba(0,0,0,0.45)'; ctx.fillRect(W - WALL - 8 - 80, y, 80, 10);
+    ctx.fillStyle = def.color; ctx.fillRect(W - WALL - 8 - 80, y, 80 * left / (def.secs * 60), 10);
+    ctx.strokeStyle = '#fff'; ctx.lineWidth = 1; ctx.strokeRect(W - WALL - 8 - 80, y, 80, 10);
+  }
+}
+
+// ---------- Enemies (from floor 50): one villain per hero flies in and fires horizontal beams ----------
+// State machine: enter -> charge -> fire -> (pause -> charge -> fire) x volleys -> leave
+// Everything here lives in SCREEN space (y measured from the top of the canvas), not world space.
+const ENEMY_MIN_FLOOR = 50;
+const ENEMY_SY = 140;          // resting screen height of the villain (upper-middle of the screen)
+const BEAM_THICK = 14;         // beam thickness in px
+const BEAM_LIFE = 24;          // ticks a beam stays deadly
+const BEAM_SLOT = 110;         // spacing of the beam "slots"; 110 - 14 thick = 96px clear gap (>= MIN_GAP)
+const MIN_GAP = 90;            // guaranteed clear vertical gap between neighbouring beams
+const BEAM_COLORS = { marinara: '#f43f5e', soggy: '#60a5fa', taxman: '#4ade80', lunk: '#c084fc' };
+let enemy = null;              // {state,t,age,side,x,homeX,volleys,beams:[y..],hit,chargeLen}
+let enemyCd = 0, enemyIntro = false, hitFlash = 0;
+
+function resetEnemy() { enemy = null; enemyCd = 120; enemyIntro = false; hitFlash = 0; }   // first villain after ~2s
+
+const enemyHeight = () => Math.max(player.floor, bestFloor);
+const beamCount = () => { const n = enemyHeight(); return n < 100 ? 2 : n < 170 ? 3 : 4; };   // 2 at 50, 3 by ~120, 4 by ~200
+const beamColor = () => BEAM_COLORS[player.ch.id] || '#e879f9';
+
+// Choose beam heights (screen y of each beam's centre). Slots are spaced BEAM_SLOT apart around the
+// player's current height, and one of the three slots nearest the player is always left empty, so
+// there is always a wide open lane right where the player is. Returns a sorted array of y values.
+function pickBeamYs(count, playerSy) {
+  const pc = Math.max(150, Math.min(H - 150, playerSy + PH / 2));   // keep the 3 near slots on screen
+  const skip = Math.floor(Math.random() * 3) - 1;                   // -1, 0 or +1: the slot left open
+  const slots = [];
+  for (let k = -4; k <= 4; k++) {
+    const y = pc + k * BEAM_SLOT;
+    if (k !== skip && y > 50 && y < H - 30) slots.push(y);
+  }
+  while (slots.length > count) slots.splice(Math.floor(Math.random() * slots.length), 1);   // drop random extras
+  return slots;
+}
+
+function spawnEnemy() {
+  const side = Math.random() < 0.5 ? -1 : 1;                        // -1 = from the left edge, 1 = from the right
+  enemy = { state: 'enter', t: 0, age: 0, side, x: side < 0 ? -30 : W + 30, homeX: side < 0 ? WALL + 50 : W - WALL - 50,
+            volleys: Math.random() < 0.5 ? 1 : 2, beams: [], hit: false, chargeLen: Math.round(ramp(enemyHeight(), 50, 200, 60, 40)) };
+  if (!enemyIntro) {
+    enemyIntro = true;
+    const name = (VILLAINS[player.ch.id] || VILLAINS.taxman).name;
+    message = `${name.toUpperCase()} APPEARS!`; messageTimer = 120;
+  }
+}
+
+function updateEnemy() {
+  if (!enemy) {
+    if (enemyHeight() >= ENEMY_MIN_FLOOR && --enemyCd <= 0) spawnEnemy();
+    return;
+  }
+  const e = enemy;
+  e.age++; e.t++;
+  if (e.state === 'enter') {                                        // glide in from the edge
+    e.x += (e.homeX - e.x) * 0.1;
+    if (Math.abs(e.homeX - e.x) < 3) startCharge(e);
+  } else if (e.state === 'charge') {
+    if (e.t >= e.chargeLen) { e.state = 'fire'; e.t = 0; e.hit = false; window.sfx?.('beam'); shake = Math.max(shake, 3); }
+  } else if (e.state === 'fire') {
+    if (!e.hit && beamsHitPlayer(e)) hitPlayer(e);
+    if (e.t >= BEAM_LIFE) endVolley(e);
+  } else if (e.state === 'pause') {
+    if (e.t >= 20) startCharge(e);
+  } else if (e.state === 'leave') {
+    e.x += e.side * 6;                                              // fly back out the way it came
+    if (e.x < -40 || e.x > W + 40) { enemy = null; enemyCd = Math.round(ramp(enemyHeight(), 50, 200, 540, 270)); }   // 9s -> 4.5s
+  }
+}
+
+function startCharge(e) {
+  e.state = 'charge'; e.t = 0;
+  e.beams = pickBeamYs(beamCount(), player.y - camY);               // locked in now, so the warning lines are exact
+  window.sfx?.('warn');
+}
+
+function endVolley(e) {
+  if (!e.hit) {                                                     // survived without a scratch
+    const px = player.x + PW / 2, py = player.y - 20;
+    addScore(50, px, py, false);
+    spawn(px, py, 0, -0.8, 55, '#86efac', 8, 'text', `DODGED +${50 * multiplier()}`);
+  }
+  e.beams = [];
+  if (--e.volleys > 0) { e.state = 'pause'; e.t = 0; } else { e.state = 'leave'; e.t = 0; }
+}
+
+// Player hitbox = sprite box shrunk by 6px on every side, tested against each beam band
+function beamsHitPlayer(e) {
+  const top = player.y - camY + 6, bottom = player.y - camY + PH - 6;
+  const left = player.x + 6, right = player.x + PW - 6;
+  if (right < WALL || left > W - WALL) return false;                // (can't happen, walls clamp the player)
+  return e.beams.some(by => bottom > by - BEAM_THICK / 2 && top < by + BEAM_THICK / 2);
+}
+
+// A hit knocks the player DOWN. The camera keeps scrolling, so the lost height can end the run.
+function hitPlayer(e) {
+  const p = player;
+  e.hit = true;
+  p.vy = 10; p.y += 4; p.onGround = false; p.on = null; p.coyote = 0; jumpBuf = 0;   // y+=4 so we don't re-land on the same floor
+  kickChain = 0; endCombo();                                        // chain and combo end (fire mode follows)
+  shake = Math.max(shake, 8); hitFlash = 24;
+  window.sfx?.('hit');
+}
+
+function drawEnemy() {
+  if (!enemy) return;
+  const e = enemy, color = beamColor();
+  const x0 = WALL, bw = W - 2 * WALL;
+  if (e.state === 'charge') {                                       // warning: a red band exactly where the beam will be, pulsing harder as it charges
+    const prog = Math.min(1, e.t / e.chargeLen);
+    const pulse = 0.5 + 0.5 * Math.sin(e.t * (0.3 + prog * 0.7));   // pulse speeds up toward full charge
+    ctx.save();
+    for (const by of e.beams) {
+      ctx.fillStyle = `rgba(255,40,40,${0.15 + (0.13 + 0.12 * prog) * pulse})`;   // alpha pulses 0.15 - 0.28, peak rising to 0.4 at full charge
+      ctx.fillRect(x0, by - BEAM_THICK / 2, bw, BEAM_THICK);
+      ctx.strokeStyle = `rgba(255,${Math.round(110 - 60 * prog)},${Math.round(110 - 60 * prog)},${0.65 + 0.35 * pulse})`;
+      ctx.lineWidth = 1.5 + prog * 1.5; ctx.setLineDash([10, 6]); ctx.lineDashOffset = -e.t * 1.5;
+      ctx.beginPath(); ctx.moveTo(x0, by - BEAM_THICK / 2); ctx.lineTo(x0 + bw, by - BEAM_THICK / 2);
+      ctx.moveTo(x0, by + BEAM_THICK / 2); ctx.lineTo(x0 + bw, by + BEAM_THICK / 2); ctx.stroke();
+      ctx.setLineDash([]);
+      for (const mx of [WALL / 2, W - WALL / 2]) {                  // "!" markers on both walls
+        ctx.fillStyle = `rgba(220,30,30,${0.75 + 0.25 * pulse})`;
+        ctx.beginPath(); ctx.arc(mx, by, 9 + prog * 3, 0, Math.PI * 2); ctx.fill();
+        text('!', mx, by + 5, 12 + Math.round(prog * 4), '#fff');
+      }
+    }
+    ctx.restore();
+  } else if (e.state === 'fire') {                                  // glowing beam: soft halo, colour band, white flickering core
+    const fade = Math.min(1, (BEAM_LIFE - e.t) / 4);
+    ctx.save();
+    for (const by of e.beams) {
+      ctx.globalAlpha = 0.25 * fade; ctx.fillStyle = color; ctx.fillRect(x0, by - BEAM_THICK / 2 - 8, bw, BEAM_THICK + 16);
+      ctx.globalAlpha = (0.85 + Math.random() * 0.15) * fade; ctx.fillRect(x0, by - BEAM_THICK / 2, bw, BEAM_THICK);
+      ctx.fillStyle = '#fff'; ctx.fillRect(x0, by - (3 + Math.random() * 2), bw, 6 + Math.random() * 3);
+    }
+    ctx.restore();
+  }
+  const firing = e.state === 'charge' ? e.t / e.chargeLen : e.state === 'fire' ? 1 : 0;
+  const facing = player.x + PW / 2 < e.x ? 1 : -1;                  // art faces LEFT at facing=1
+  drawVillainArt(player.ch.id, e.x, ENEMY_SY + Math.sin(e.age * 0.08) * 6, facing, e.age / 30, firing);
+}
+
+// ---------- Scoring, fire mode, particles ----------
+// x2 while on fire, x3 when the chain/combo gets really long. Applied to ALL points earned.
+function multiplier() {
+  if (kickChain < 3 && combo < 10) return 1;
+  return kickChain >= 6 || combo >= 20 ? 3 : 2;
+}
+function addScore(base, x, y, popup = true) {
+  const m = multiplier(), pts = base * m;
+  score += pts;
+  if (popup) spawn(x, y, 0, -0.8, 55, m > 1 ? '#fb923c' : '#fde047', 9, 'text', `+${pts}`);
+}
+function spawn(x, y, vx, vy, life, color, size, type, str) {
+  if (particles.length >= MAX_PARTICLES) return;
+  particles.push({ x, y, vx, vy, life, max: life, color, size, type, text: str, rot: Math.random() * 6 });
+}
+function updateParticles() {
+  let j = 0;
+  for (const q of particles) {
+    q.x += q.vx; q.y += q.vy;
+    if (q.type === 'confetti') { q.vy += 0.15; q.vx *= 0.98; q.x += Math.sin(q.life * 0.3 + q.rot) * 0.6; }
+    else if (q.type === 'spark') q.vy += 0.2;
+    else if (q.type === 'dust') { q.vx *= 0.92; q.vy *= 0.92; }
+    else if (q.type === 'flame') { q.vx *= 0.95; q.vy -= 0.03; }
+    if (--q.life > 0) particles[j++] = q;
+  }
+  particles.length = j;
+}
+function landFx(y, impact) {                     // dust puffs, bigger for harder landings
+  const p = player, n = Math.min(12, 2 + Math.floor(impact / 2));
+  for (let i = 0; i < n; i++) {
+    const dir = i % 2 ? 1 : -1;
+    spawn(p.x + PW / 2 + (Math.random() - 0.5) * PW, y, dir * (0.5 + Math.random() * 1.5) * (1 + impact * 0.08), -Math.random() * (0.5 + impact * 0.08), 22 + Math.random() * 12, '#e6f4ff', 2 + Math.random() * 2 + impact * 0.12, 'dust');
+  }
+  if (impact > 4) window.sfx?.('land');
+}
+function wallKickJump() {
+  const p = player;
+  kickChain++;
+  addScore(25 * kickChain, p.x + PW / 2, p.y - 10);
+  message = kickChain > 1 ? `WALL KICK x${kickChain}!` : 'WALL KICK!'; messageTimer = 45;
+  shake = Math.max(shake, 4);
+  const wx = p.x + PW / 2 < W / 2 ? WALL : W - WALL;
+  for (let i = 0; i < 12; i++) spawn(wx, p.y + PH / 2 + (Math.random() - 0.5) * 24, (p.x + PW / 2 < W / 2 ? 1 : -1) * Math.random() * 4, (Math.random() - 0.8) * 4, 16 + Math.random() * 10, i % 2 ? '#fde047' : '#fff', 2 + Math.random() * 2, 'spark');
+  window.sfx?.('wallkick');
+}
+function updateFire() {                          // on fire while chain >= 3 OR combo >= 10; ends when both are false
+  const on = kickChain >= 3 || combo >= 10;
+  if (on && !fire) {
+    fire = true; fireMsgTimer = 90; shake = Math.max(shake, 5);
+    const p = player;
+    for (let i = 0; i < 40; i++) spawn(p.x + PW / 2, p.y + PH / 2, (Math.random() - 0.5) * 9, -2 - Math.random() * 6, 50 + Math.random() * 30, ['#ef4444', '#fde047', '#4ade80', '#60a5fa', '#f472b6'][i % 5], 3 + Math.random() * 3, 'confetti');
+    window.sfx?.('fireOn');
+  } else if (!on && fire) {
+    fire = false;
+    window.sfx?.('fireOff');
+  }
+}
+
+const comboDuration = () => (perkOf(player.ch) === 'snack' ? 270 : 180);   // ticks
+
+function landOn(n, fresh) {
   const p = player;
   // Measure from your highest floor so far, so dropping down and re-climbing old floors can't farm combos
   const gained = n - Math.max(lastFloor, bestFloor);
   if (gained >= 2) {                          // multi-floor jumps build a combo
     combo += gained;
-    comboTimer = 180;                         // 3 seconds to keep it going
+    comboTimer = comboDuration();             // 3 seconds to keep it going (4.5 with the snack perk)
   } else if (gained !== 0) {
     endCombo();
   }
   lastFloor = n;
   p.floor = n;
-  if (n > bestFloor) { score += (n - bestFloor) * 10; bestFloor = n; }
+  if (n > bestFloor) { addScore((n - bestFloor) * 10, p.x + PW / 2, p.y - 6, n - bestFloor >= 2); bestFloor = n; }
+  if (fresh && gained < 2) kickChain = 0;     // a normal small hop breaks the wall-kick chain
 }
 
 function endCombo() {
   if (combo >= 4) {
-    score += combo * combo;
+    addScore(combo * combo * 2, player.x + PW / 2, player.y - 28);
     message = combo >= 20 ? `SICK! ${combo} floor combo` : combo >= 10 ? `GREAT! ${combo} floor combo` : `Nice: ${combo} floor combo`;
     messageTimer = 120;
+    window.sfx?.('combo');
   }
   combo = 0; comboTimer = 0;
 }
 
 function gameOver() {
   endCombo();
-  mode = 'over';
+  fire = false; shake = 0;
+  mode = 'over'; overAt = now();
+  touches.clear(); recalcTouches();
+  window.sfx?.('gameover');
+  window.music?.stop();
+  lastGain = score; wallet += score; saveWallet();   // bank this run's points
   if (score > highScore) {
     highScore = score;
     try { localStorage.setItem('slipup-high', String(highScore)); } catch (e) {}
@@ -380,7 +1116,6 @@ function gameOver() {
   track('run_ended', { character: player.ch.name, floor: bestFloor, score, seconds: Math.round(elapsed) });
   askCoach();
 }
-
 // Analytics helper: never let a blocked/failed PostHog break the game.
 function track(event, props) {
   try { window.posthog && posthog.capture(event, props); } catch (e) {}
@@ -420,11 +1155,13 @@ function wrapText(str, maxChars) {
   return lines;
 }
 
+
 // ---------- Drawing ----------
-function drawBackground(offset) {
+const mix = (a, b, t) => a.map((v, i) => Math.round(v + (b[i] - v) * t));
+function drawBackground(offset, glow = 0) {   // glow 0..1 warms the sky while on fire
   const g = ctx.createLinearGradient(0, 0, 0, H);
-  g.addColorStop(0, '#1e3a5f'); g.addColorStop(1, '#4a7ab0');
-  ctx.fillStyle = g; ctx.fillRect(0, 0, W, H);
+  g.addColorStop(0, `rgb(${mix([30, 58, 95], [96, 44, 52], glow)})`); g.addColorStop(1, `rgb(${mix([74, 122, 176], [196, 112, 84], glow)})`);
+  ctx.fillStyle = g; ctx.fillRect(-12, -12, W + 24, H + 24);
   // background bricks scroll slower than the floors (parallax)
   ctx.strokeStyle = 'rgba(255,255,255,0.07)';
   const bh = 24, shift = ((-offset * 0.5) % bh + bh) % bh;
@@ -436,82 +1173,235 @@ function drawBackground(offset) {
 
 function drawWalls() {
   ctx.fillStyle = '#9fd3f5';
-  ctx.fillRect(0, 0, WALL, H); ctx.fillRect(W - WALL, 0, WALL, H);
+  ctx.fillRect(0, -12, WALL, H + 24); ctx.fillRect(W - WALL, -12, WALL, H + 24);
   ctx.fillStyle = '#dff3ff';
-  ctx.fillRect(WALL - 6, 0, 6, H); ctx.fillRect(W - WALL, 0, 6, H);
+  ctx.fillRect(WALL - 6, -12, 6, H + 24); ctx.fillRect(W - WALL, -12, 6, H + 24);
 }
 
 function drawFloors() {
   for (const f of floors) {
     const y = f.y - camY;
-    if (y < -20 || y > H + 20) continue;
-    ctx.fillStyle = f.n % 50 === 0 ? '#fbbf24' : '#bfe6ff';
+    if (y < -40 || y > H + 40) continue;
+    if (f.slant) { drawSlantFloor(f, y); continue; }
+    ctx.fillStyle = f.n % 50 === 0 ? '#fbbf24' : f.moving ? '#fdba74' : '#bfe6ff';   // moving floors are orange ice
     ctx.fillRect(f.x, y, f.w, 14);
     ctx.fillStyle = 'rgba(255,255,255,0.8)';
     ctx.fillRect(f.x, y, f.w, 3);               // icy shine on top
-    ctx.fillStyle = '#5b8db8';
+    ctx.fillStyle = f.moving ? '#c2410c' : '#5b8db8';
     ctx.fillRect(f.x, y + 14, f.w, 3);
+    if (f.moving) drawChevrons(f, y);
     if (f.n % 10 === 0) {
-      ctx.fillStyle = '#0b1020'; ctx.font = 'bold 11px monospace'; ctx.textAlign = 'center';
+      ctx.fillStyle = '#0b1020'; ctx.font = `8px ${FONT}`; ctx.textAlign = 'center';
       ctx.fillText(f.n, f.x + f.w / 2, y + 11);
     }
   }
 }
 
+// A tilted ramp: icy blue slab rotated about its centre, yellow/black hazard stripes along the underside
+function drawSlantFloor(f, y) {
+  ctx.save();
+  ctx.translate(f.x + f.w / 2, y); ctx.rotate(f.slant); ctx.translate(-f.w / 2, 0);
+  ctx.fillStyle = '#9fd8ff'; ctx.fillRect(0, 0, f.w, 14);
+  ctx.fillStyle = 'rgba(255,255,255,0.85)'; ctx.fillRect(0, 0, f.w, 3);
+  ctx.save(); ctx.beginPath(); ctx.rect(0, 14, f.w, 6); ctx.clip();
+  ctx.fillStyle = '#facc15'; ctx.fillRect(0, 14, f.w, 6);
+  ctx.fillStyle = '#111827';
+  for (let sx = -6; sx < f.w; sx += 12) { ctx.beginPath(); ctx.moveTo(sx, 14); ctx.lineTo(sx + 6, 14); ctx.lineTo(sx + 12, 20); ctx.lineTo(sx + 6, 20); ctx.closePath(); ctx.fill(); }
+  ctx.restore();
+  if (f.n % 10 === 0) { ctx.fillStyle = '#0b1020'; ctx.font = `8px ${FONT}`; ctx.textAlign = 'center'; ctx.fillText(f.n, f.w / 2, 11); }
+  ctx.restore();
+}
+
+// Little arrows on a moving floor pointing the way it is currently sliding, plus end rivets
+function drawChevrons(f, y) {
+  const dir = f.dx < 0 ? -1 : 1;
+  ctx.fillStyle = '#9a3412';
+  for (let cx = f.x + 14; cx < f.x + f.w - 8; cx += 18) {
+    ctx.beginPath();
+    ctx.moveTo(cx - 3 * dir, y + 4); ctx.lineTo(cx + 3 * dir, y + 8); ctx.lineTo(cx - 3 * dir, y + 12);
+    ctx.lineTo(cx - 5 * dir, y + 12); ctx.lineTo(cx + dir, y + 8); ctx.lineTo(cx - 5 * dir, y + 4);
+    ctx.closePath(); ctx.fill();
+  }
+  ctx.fillStyle = '#7c2d12';
+  ctx.fillRect(f.x + 2, y + 6, 3, 3); ctx.fillRect(f.x + f.w - 5, y + 6, 3, 3);   // rivets
+}
+
 function text(str, x, y, size, color = '#fff', align = 'center') {
-  ctx.font = `bold ${size}px monospace`; ctx.textAlign = align;
+  ctx.font = `${size}px ${FONT}`; ctx.textAlign = align;
+  const tw = ctx.measureText(str).width;          // safety net: shrink anything wider than the space between the walls
+  if (tw > W - 2 * WALL) ctx.font = `${Math.max(6, Math.floor(size * (W - 2 * WALL) / tw))}px ${FONT}`;
   ctx.fillStyle = '#0b1020'; ctx.fillText(str, x + 2, y + 2);
   ctx.fillStyle = color; ctx.fillText(str, x, y);
 }
 
 function drawHUD() {
-  text(`FLOOR ${player.floor}`, WALL + 8, 26, 16, '#fff', 'left');
-  text(`SCORE ${score}`, W - WALL - 8, 26, 16, '#fde047', 'right');
+  const flick = ['#fb923c', '#fde047', '#f97316', '#facc15'][Math.floor(performance.now() / 70) % 4];
+  text(`FLOOR ${player.floor}`, WALL + 8, 26, 10, '#fff', 'left');
+  text(`SCORE ${score}`, W - WALL - 8, 26, 10, fire ? flick : '#fde047', 'right');
+  drawPowerHUD();
   if (combo >= 2) {
-    text(`COMBO x${combo}`, W / 2, 56, 18, '#f472b6');
-    ctx.fillStyle = '#f472b6'; ctx.fillRect(W / 2 - 50, 64, 100 * comboTimer / 180, 5);
+    text(`COMBO x${combo}`, W / 2, 56, 11, '#f472b6');
+    ctx.fillStyle = '#f472b6'; ctx.fillRect(W / 2 - 50, 64, 100 * comboTimer / comboDuration(), 5);
   }
-  if (messageTimer > 0) text(message, W / 2, H / 2 - 120, 22, '#fde047');
-  if (elapsed < 5) text('Run, then jump. Faster run = higher jump.', W / 2, H - 30, 13);
+  if (fire) text(`ON FIRE x${multiplier()}`, W / 2, 90, 13, flick);
+  if (kickChain >= 2) text(`KICK CHAIN ${kickChain}`, W / 2, 108, 8, '#fde047');
+  if (fireMsgTimer > 0) text('ON FIRE!', W / 2, H / 2 - 70 - (90 - fireMsgTimer) * 0.3, 22, flick);
+  if (messageTimer > 0) text(message, W / 2, H / 2 - 120, 13, '#fde047');
+  if (isTouch) drawTouchHints();
+  if (elapsed < 5) {
+    const hint = !isTouch ? 'Run, then jump. Faster run = higher jump.' : controlMode === 'tilt' ? 'TILT TO MOVE · TAP TO JUMP' : 'HOLD LEFT / RIGHT · TAP MIDDLE TO JUMP';
+    text(hint, W / 2, H - 30, 8);
+  }
+}
+
+// Touch devices only: faint on-screen hints. TOUCH mode = left / right arrow zones (light up while held); TILT mode = a tilting phone icon at run start.
+function drawTouchHints() {
+  ctx.save();
+  if (controlMode === 'touch') {
+    for (const [zx, dir, on] of [[0, -1, touchLeft], [W * 2 / 3, 1, touchRight]]) {
+      ctx.fillStyle = on ? 'rgba(255,255,255,0.18)' : 'rgba(255,255,255,0.06)';
+      ctx.fillRect(zx, H - 78, W / 3, 78);
+      ctx.fillStyle = on ? 'rgba(255,255,255,0.7)' : 'rgba(255,255,255,0.28)';
+      const cx = zx + W / 6, cy = H - 46;
+      ctx.beginPath(); ctx.moveTo(cx + 14 * dir, cy); ctx.lineTo(cx - 10 * dir, cy - 16); ctx.lineTo(cx - 10 * dir, cy + 16); ctx.closePath(); ctx.fill();
+    }
+  } else if (elapsed < 5) {
+    ctx.translate(W / 2, H - 74); ctx.rotate(Math.sin(elapsed * 4) * 0.35);
+    ctx.strokeStyle = 'rgba(255,255,255,0.7)'; ctx.lineWidth = 2; ctx.fillStyle = 'rgba(255,255,255,0.12)';
+    ctx.beginPath(); ctx.roundRect(-9, -15, 18, 30, 3); ctx.fill(); ctx.stroke();
+  }
+  ctx.restore();
+}
+
+function drawPadlock(cx, cy) {                    // small padlock drawn with shapes (the pixel font has no lock glyph)
+  ctx.save();
+  ctx.strokeStyle = '#e2e8f0'; ctx.lineWidth = 2;
+  ctx.beginPath(); ctx.arc(cx, cy - 4, 5, Math.PI, 0); ctx.stroke();   // shackle
+  ctx.fillStyle = '#fbbf24'; ctx.fillRect(cx - 7, cy - 4, 14, 11);     // body
+  ctx.fillStyle = '#78350f'; ctx.fillRect(cx - 1, cy, 2, 4);           // keyhole
+  ctx.restore();
+}
+
+function drawStatBars(ch, x, y) {                 // label on the left, 8 filled/empty segments on the right
+  STAT_ROWS.forEach((r, i) => {
+    const ry = y + i * 20, n = statSegments(r, ch);
+    text(r.label, x, ry, 8, '#93c5fd', 'left');
+    for (let k = 0; k < 8; k++) {
+      ctx.fillStyle = k < n ? '#fde047' : 'rgba(255,255,255,0.15)';
+      ctx.fillRect(x + 80 + k * 28, ry - 9, 24, 10);
+    }
+  });
+}
+
+function drawThumbs() {                           // 2 rows of 6 small sprites; selected one gets a box
+  CHARACTERS.forEach((ch, i) => {
+    const x = 60 + (i % 6) * 60 + 12, y = 384 + Math.floor(i / 6) * 62;
+    const locked = !isUnlocked(i);
+    ctx.save();
+    if (locked) ctx.globalAlpha = 0.3;
+    drawSprite(ch, x, y, 1, 0, 1, 0, false, 0);
+    ctx.restore();
+    if (locked) {
+      drawPadlock(x + PW / 2, y + 26);
+      text(String(PRICES[i]), x + PW / 2, y + 62, 8, wallet >= PRICES[i] ? '#86efac' : '#fca5a5');
+    }
+    if (i === selected) { ctx.strokeStyle = '#fde047'; ctx.lineWidth = 2; ctx.strokeRect(x - 7, y - 7, PW + 14, 64); }
+  });
+}
+
+// A rounded button for menu / end-card taps. `r` is the same hit box the tap handler uses.
+function drawButton(r, label, color, size, sub) {
+  const [x, y, w, h] = r;
+  ctx.save();
+  ctx.fillStyle = color; ctx.globalAlpha *= 0.92; ctx.beginPath(); ctx.roundRect(x, y + 3, w, h - 3, 10); ctx.fill();
+  ctx.fillStyle = 'rgba(255,255,255,0.18)'; ctx.beginPath(); ctx.roundRect(x, y, w, (h - 3) / 2, 10); ctx.fill();
+  ctx.strokeStyle = 'rgba(255,255,255,0.55)'; ctx.lineWidth = 2; ctx.beginPath(); ctx.roundRect(x + 1, y + 1, w - 2, h - 2, 10); ctx.stroke();
+  ctx.restore();
+  const cy = y + h / 2 + size / 2 - (sub ? 5 : 0);
+  text(label, x + w / 2, cy, size, '#fff');
+  if (sub) text(sub, x + w / 2, cy + 15, 6, '#cbd5e1');
 }
 
 function drawSelect() {
   drawBackground(0); drawWalls();
-  text('MOUNT', W / 2, 88, 40, '#e0f2fe');
-  text('NEVEREST', W / 2, 132, 40, '#e0f2fe');
-  text('choose your knockoff', W / 2, 165, 16, '#93c5fd');
+  ctx.save(); ctx.translate(0, menuOY());
+  text('MOUNT NEVEREST', W / 2, 50, 20, '#e0f2fe');
   const ch = CHARACTERS[selected];
-  ctx.save(); ctx.translate(W / 2 - PW, 210); ctx.scale(2, 2);
-  drawSprite(ch, 0, 0, 1, 0, 1, performance.now() / 120);
+  ctx.save();
+  if (needFlash > 0) ctx.translate(Math.sin(needFlash * 1.5) * 4, 0);   // shake when you can't afford it
+  ctx.save(); ctx.translate(W / 2 - PW, 100); ctx.scale(2, 2);
+  drawSprite(ch, 0, 0, 1, 0, 1, performance.now() / 120, false, 6);
   ctx.restore();
-  text(`<  ${ch.name}  >`, W / 2, 360, 20, '#fde047');
-  text(`"${ch.bio}"`, W / 2, 390, 13, '#e2e8f0');
-  const s = ch.stats;
-  text(`speed ${'■'.repeat(Math.round((s.accel - 0.3) * 20))}   jump ${'■'.repeat(Math.round(s.jump - 8))}`, W / 2, 420, 13, '#93c5fd');
-  text('← → pick   ENTER start', W / 2, 480, 15);
-  text('arrows / WASD move · SPACE jump', W / 2, 505, 13, '#cbd5e1');
-  text('tip: jump right after a wall bounce = WALL KICK', W / 2, 528, 12, '#f472b6');
-  text(`best: ${highScore}`, W / 2, 560, 14, '#fde047');
-  text('Playtest notice: anonymous play stats and session replay are recorded.', W / 2, 595, 10, '#94a3b8');
-  text('All characters are parodies. Not affiliated with any real game.', W / 2, 615, 10, '#94a3b8');
+  text(`<  ${ch.name}  >`, W / 2, 222, 13, '#fde047');
+  text(`"${ch.bio}"`, W / 2, 244, 8, '#e2e8f0');
+  text(`PERK: ${ch.perk.label}`, W / 2, 264, 8, '#f472b6');
+  drawStatBars(ch, 90, 292);
+  ctx.restore();
+  if (needFlash > 0) { needFlash--; text(`NEED ${needPrice} PTS`, W / 2, 372, 10, '#f87171'); }
+  else if (!isUnlocked(selected)) text(`LOCKED: ${PRICES[selected]} PTS`, W / 2, 372, 10, '#fbbf24');
+  const pulseA = 0.5 + 0.4 * Math.sin(now() / 300);               // big tappable < > on both sides of the sprite
+  text('<', 52, 168, 34, `rgba(253,224,71,${pulseA})`); text('>', W - 52, 168, 34, `rgba(253,224,71,${pulseA})`);
+  drawThumbs();
+  if (isTouch) {
+    drawButton(R.start, isUnlocked(selected) ? 'TAP TO START' : 'TAP TO BUY', '#16a34a', 12);
+    drawButton(R.ctrl, `CONTROLS: ${controlMode.toUpperCase()}`, '#334155', 9, 'tap to switch');
+    text('Playtest: anonymous play stats + replay recorded', W / 2, 624, 6, '#64748b');
+    text(`best: ${highScore}`, W / 2, 636, 7, '#fde047');
+  } else {
+    text(isUnlocked(selected) ? '< > pick   ENTER start' : '< > pick   ENTER buy', W / 2, 526, 9);
+    text('arrows / WASD move · SPACE jump', W / 2, 546, 8, '#cbd5e1');
+    text('tip: jump right after a wall bounce = WALL KICK', W / 2, 564, 7, '#f472b6');
+    text(`best: ${highScore} · wallet: ${wallet}`, W / 2, 584, 8, '#fde047');
+    text('M: mute', W / 2, 602, 8, '#94a3b8');
+    text('Playtest: anonymous play stats + replay recorded', W / 2, 622, 7, '#64748b');
+  }
+  ctx.restore();
+}
+
+function drawParticles(textPass) {
+  for (const q of particles) {
+    if ((q.type === 'text') !== textPass) continue;
+    const x = q.x, y = q.y - camY;
+    if (y < -20 || y > H + 20) continue;
+    ctx.globalAlpha = Math.min(1, q.life / q.max * 1.5);
+    if (textPass) { text(q.text, x, y, q.size, q.color); continue; }
+    const r = q.size * (q.type === 'flame' ? q.life / q.max + 0.3 : q.type === 'dust' ? 1 + (1 - q.life / q.max) * 0.8 : 1);
+    ctx.fillStyle = q.color;
+    if (q.type === 'confetti' || q.type === 'spark') ctx.fillRect(x - r / 2, y - r / 2, r, r);
+    else { ctx.beginPath(); ctx.arc(x, y, r, 0, Math.PI * 2); ctx.fill(); }
+  }
+  ctx.globalAlpha = 1;
 }
 
 function drawPlay() {
-  drawBackground(camY);
+  ctx.save();
+  if (shake > 0.3) ctx.translate((Math.random() - 0.5) * shake * 2, (Math.random() - 0.5) * shake * 2);
+  drawBackground(camY, fireGlow);
   drawFloors();
   drawWalls();
-  drawSprite(player.ch, player.x, player.y - camY, player.facing, player.angle, player.squash, player.anim, !player.onGround);
+  drawPickups();
+  drawParticles(false);                         // dust, flames, sparks, confetti sit behind the player
+  drawAura();
+  drawSprite(player.ch, player.x, player.y - camY, player.facing, player.angle, player.squash, player.anim, !player.onGround, Math.abs(player.vx));
+  drawEnemy();                                  // beams, warning lines and the villain (screen space)
+  drawParticles(true);                          // floating score popups on top
+  ctx.restore();
+  if (hitFlash > 0) { ctx.fillStyle = `rgba(239,68,68,${hitFlash / 24})`; ctx.fillRect(0, 0, W, H); }   // red flash when hit
   drawHUD();
 }
 
 function drawOver() {
   drawPlay();
   ctx.fillStyle = 'rgba(11,16,32,0.75)'; ctx.fillRect(0, 0, W, H);
-  text('YOU SLIPPED', W / 2, 220, 40, '#f87171');
-  text(`floor ${bestFloor} · score ${score}`, W / 2, 270, 20);
-  text(`best ${highScore}`, W / 2, 300, 16, '#fde047');
-  if (coachLine) wrapText(coachLine, 38).forEach((ln, i) => text(ln, W / 2, 335 + i * 20, 14, '#a7f3d0'));
-  text('R retry · C change character', W / 2, 420, 15);
+  ctx.save(); ctx.translate(0, menuOY());
+  text('YOU SLIPPED', W / 2, 220, 24, '#f87171');
+  text(player.ch.name, W / 2, 250, 11, '#93c5fd');
+  text(`floor ${bestFloor} · score ${score}`, W / 2, 285, 12);
+  text(`best ${highScore}`, W / 2, 313, 10, '#fde047');
+  if (coachLine) wrapText(coachLine, 40).slice(0, 3).forEach((ln, i) => text(ln, W / 2, 334 + i * 13, 8, '#a7f3d0'));
+  text(isTouch ? 'TAP ANYWHERE TO RETRY' : 'R retry · C change character', W / 2, 380, 9);
+  drawButton(R.change, 'CHANGE CHARACTER', '#334155', 9);
+  ctx.restore();
 }
 
 // ---------- Main loop: fixed-step physics, draw every frame ----------
@@ -523,12 +1413,34 @@ function frame(now) {
     if (mode === 'play') update();
     acc -= STEP;
   }
+  ctx.setTransform(viewScale, 0, 0, viewScale, 0, 0);   // draw in 480-wide game units whatever the real canvas size is
   if (mode === 'select') drawSelect();
   else if (mode === 'play') drawPlay();
   else drawOver();
   requestAnimationFrame(frame);
 }
+
+// Fit the canvas: as tall as the screen allows (width is always 480 game units), then the largest box that fits, centred, with a backing store at the device pixel ratio (stays sharp)
+function fit() {
+  const vv = window.visualViewport;
+  const vw = (vv && vv.width) || window.innerWidth || W, vh = (vv && vv.height) || window.innerHeight || H;
+  const oldH = H;
+  H = Math.round(Math.max(BASE_H, Math.min(1100, W * vh / vw)));   // taller than 3:4 screen -> taller game, no letterbox bars
+  if (mode === 'play' && H !== oldH) camY += oldH - H;           // mid-run resize (Safari toolbar, rotation): keep the bottom edge put so you don't 'fall off'
+  const k = Math.min(vw / W, vh / H);
+  const cssW = Math.max(1, Math.floor(W * k)), cssH = Math.max(1, Math.floor(H * k));
+  canvas.style.width = cssW + 'px'; canvas.style.height = cssH + 'px';
+  viewScale = Math.min(3, Math.max(1, (window.devicePixelRatio || 1) * cssW / W));   // backing pixels per game pixel
+  const bw = Math.round(W * viewScale), bh = Math.round(H * viewScale);
+  if (canvas.width !== bw || canvas.height !== bh) { canvas.width = bw; canvas.height = bh; }
+}
+fit();
+addEventListener('resize', fit);
+addEventListener('orientationchange', () => setTimeout(fit, 150));
+try { window.visualViewport.addEventListener('resize', fit); } catch (e) {}
+
 requestAnimationFrame(frame);
+window.music?.start('menu');                    // menu music (audio.js waits for a user gesture)
 </script>
 </body>
 </html>
