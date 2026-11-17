@@ -162,8 +162,8 @@
     <section id="live-demo">
       <h2>Product Showcase (Prototype / Live App / 2-Min Video)</h2>
       <p>
-        <strong>Current Status:</strong> Build 2: playable game + a real AI call (Claude Haiku writes a one-line coach tip when you lose; runs locally with <code>node server.js</code>) + PostHog analytics on this page and in the game<br />
-        <strong>Demo:</strong> <a href="game.html">Play the game →</a> (arrows/WASD to move, Space to jump). The AI coach line only appears when run locally; this hosted page is static and has no server.
+        <strong>Current Status:</strong> Build 3 (in progress): villains, power-ups, moving and slanted platforms, sound and phone controls added to the Build 2 game, which has a real AI call (Claude Haiku writes a one-line coach tip when you lose; runs locally with <code>node server.js</code>) + PostHog analytics on this page and in the game<br />
+        <strong>Demo:</strong> <a href="game.html">Play the game →</a> (laptop: arrows/WASD to move, Space to jump; phone: tap to start, tilt or touch to steer, sound on). The AI coach line only appears when run locally; this hosted page is static and has no server.
       </p>
       <img src="img/gameplay.png" alt="Gameplay: Lunk mid-jump on floor 11 with a 7-floor combo" style="max-width: 320px; width: 100%; border-radius: 8px; border: 1px solid var(--border);" />
       <p class="meta">
@@ -184,10 +184,10 @@
 
       <h3>2. Scope & Explicit Non-Goals</h3>
       <ul>
-        <li><strong>In Scope (Core Workflow):</strong> Open link → pick a character → run on slippery floors and build speed for bigger jumps → climb faster than the tower scrolls → fall → see score, best, and a one-line AI coach tip → restart with one key.</li>
+        <li><strong>In Scope (Core Workflow):</strong> Open link → pick a character → run on slippery floors and build speed for bigger jumps → climb faster than the tower scrolls → fall → see score, best, and a one-line AI coach tip → restart with one key. From floor 20 platforms start to move, from floor 50 a villain flies in and fires beams you have to dodge, from floor 100 some platforms tilt, and power-ups float by.</li>
         <li><strong>Out of Scope #1:</strong> Accounts and online leaderboards. <em>(v2 change: there is now a tiny local server, but only to hold the API key and make the AI call. It stores nothing.)</em> Best score lives only in your own browser.</li>
-        <li><strong>Out of Scope #2:</strong> Phone/touch controls. Keyboard on a laptop only.</li>
-        <li><strong>Out of Scope #3:</strong> Story mode, multiple levels, power-ups, shops, or any monetization.</li>
+        <li><strong>Out of Scope #2:</strong> Native app or app-store release. It stays a web page that runs on a laptop or phone browser. <em>(v3 change: phone tilt/touch controls are now in scope.)</em></li>
+        <li><strong>Out of Scope #3:</strong> Story mode, a points shop, or any monetization. <em>(v3 change: power-ups and enemies are now in scope.)</em></li>
       </ul>
 
       <h3>3. How It Works Under the Hood & Riskiest Assumption (Week 2+)</h3>
